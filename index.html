@@ -3,20 +3,18 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=1642">
-    <title>イラストロジック - 完全復元・拡張版</title>
+    <title>イラストロジック - 決定版</title>
     <style>
-        body { margin: 0; padding: 0; background: #fff; }
+        body { margin: 0; padding: 0; background: #fff; font-family: sans-serif; }
         #ui-panel { 
-            text-align: center; padding: 15px; background: #e0e0e0; 
-            position: sticky; top: 0; z-index: 10000; border-bottom: 2px solid #999; 
+            text-align: center; padding: 15px; background: #eee; 
+            position: sticky; top: 0; z-index: 10000; border-bottom: 2px solid #ccc; 
         }
         #ui-panel button { 
             padding: 15px 25px; font-size: 20px; margin: 0 8px; 
-            cursor: pointer; border-radius: 8px; border: 1px solid #777; background: #fff; 
+            cursor: pointer; border-radius: 8px; border: 1px solid #999; background: #fff; 
         }
-        #ui-panel button.active { 
-            background: #00CFFF; color: #fff; font-weight: bold; border-color: #008eb6; 
-        }
+        #ui-panel button.active { background: #00CFFF; color: #fff; font-weight: bold; border-color: #008eb6; }
         .canvas-container { white-space: nowrap; width: 100%; text-align: center; user-select: none; }
     </style>
 </head>
@@ -26,7 +24,7 @@
     <button id="m1" class="active" onclick="setInMode(1)">■ 塗る</button>
     <button id="m2" onclick="setInMode(2)">× バツ</button>
     <button id="m0" onclick="setInMode(0)">□ 消す</button>
-    <span style="margin:0 20px; border-left:2px solid #bbb;"></span>
+    <span style="margin:0 15px;">|</span>
     <button onclick="execUndo()">← 戻る</button>
     <button onclick="execRedo()">進む →</button>
 </div>
@@ -34,11 +32,9 @@
 <div class="canvas-container">
     <h1>計算してみると......</h1>
     <canvas id="pz_canvas" width="1632" height="1812"></canvas>
-    <div style="position:relative; line-height:1em; margin-top:-2em;"><small>Powered by お絵かきロジック工房Mobile</small></div>
 </div>
 
 <script type="text/javascript">
-    // --- 履歴・モード管理 ---
     var undoStack = [];
     var redoStack = [];
     var currentInputMode = 1;
@@ -49,7 +45,6 @@
         document.getElementById('m' + m).classList.add('active');
     }
 
-    // --- メインロジック (元の描画アルゴリズムを完全封入) ---
     function mf_start(){
         var pcs = document.getElementById('pz_canvas');
         var pcx = pcs.getContext('2d');
@@ -57,6 +52,7 @@
         of.width = pcs.width; of.height = pcs.height;
         var ofc = of.getContext('2d');
 
+        // 基本変数
         var ds=24, fmx=50, fmy=30, fx=360, fy=216, lnm=12, tnm=7;
         var c1="#FFFFFF", cw="#FFFFFF", cl="#AAAAAA", cm="#CC2222", cf="#000000", cc="rgba(0,207,255,0.20)", ccC="#00CFFF", cCr="rgba(255,255,255,0.70)", cfb="rgba(255,255,255,0.50)", cs="#444444", cb1="#FFFFFF", cb2="#CCCCCC";
         var ps=326, pdx=ps+24, pdy=fy+fmy*ds+204+ps, bs=272, pbx=pcs.width-bs-24, pby=pdy;
@@ -64,17 +60,12 @@
         var ln=[[0],[2,2,2,1],[1,1,1,2],[1,1,1,4],[2,2,2,1],[0],[3,2,2,2,2,2],[5,4,4,3,3,3],[1,2,1,2,1,2,4,3,3],[2,2,2,1,2,1,2,1,2],[2,2,2,2,2,1,2,1,2],[2,4,1,1,4,1,2,4,1,2,1,2],[2,2,2,2,2,1,2,1,2],[2,2,2,7,12],[5,4,4,2,2,2],[5,4,4,2,2,2],[0],[50],[0],[3,2,2,2,2,2],[5,4,4,3,3,3],[1,2,1,2,1,2,4,3,3],[2,2,2,1,1,2,1,2,1,2],[2,2,2,2,1,2,2,2,1,2,1,2],[2,2,1,1,5,1,2,2,1,2,1,2],[2,2,2,1,2,2,1,2,1,2],[2,2,2,1,7,12],[5,4,4,2,2,2],[5,4,4,2,2,2],[0]];
         var tn=[[2,3,1,2,3],[2,4,1,2,4],[2,2,2,1,2,2,2],[6,2,1,6,2],[1,2,4,2,1,4,2],[2,1,1],[1,1],[1,2,1,1,2],[2,1,1,1,2],[1,1],[1],[2,3,1,2,3],[2,4,1,2,4],[7,2,1,7,2],[4,2,1,4,2],[1],[2,3,1,2,3],[2,4,1,2,4],[7,2,1,7,2],[1,2,4,2,1,4,2],[2,1,1,1],[1,1,1],[1,1,5],[1,1,1],[1,1,1],[1],[2,1,2],[4,1,4],[3,1,1,3,1],[2,1,1,2,1],[10,1,10],[10,1,10],[1,1,1],[1,1],[1,1,2],[1,1,2],[1,1],[1],[3,1,3],[2,1,1,2,1],[2,1,1,2,1],[10,1,10],[10,1,10],[1,1,1],[3,1,3],[2,1,1,2,1],[1,2,1,1,2,1],[2,10,1,10],[4,10,1,10],[1,1,1,1]];
         var map = Array.from({length:fmx}, () => Array(fmy).fill(0));
-        var cpx=0, cpy=0, sp=0, pf=0, ct=0, pp=0;
-        var ppX=new Array(fmy).fill(0), ppY=new Array(fmx).fill(0);
+        var cpx=0, cpy=0, sp=0, pf=0, ct=0, pp=0, pc_x=0, pc_y=0;
 
-        // --- 元のコントローラー描画 (tud) ---
         function tud(){
-            ofc.beginPath(); 
-            var pbc = ofc.createLinearGradient(pdx, pdy-ps, pdx, pdy+ps);
-            pbc.addColorStop(0.0, cb1); pbc.addColorStop(1.0, cb2);
-            ofc.fillStyle = pbc; ofc.lineWidth = 2;
-            ofc.arc(pdx, pdy, ps, 0, Math.PI*2); ofc.fill(); ofc.strokeStyle = cs; ofc.stroke();
-            // 矢印
+            ofc.beginPath(); var pbc = ofc.createLinearGradient(pdx, pdy-ps, pdx, pdy+ps);
+            pbc.addColorStop(0, cb1); pbc.addColorStop(1, cb2); ofc.fillStyle = pbc;
+            ofc.arc(pdx, pdy, ps, 0, Math.PI*2); ofc.fill(); ofc.strokeStyle = cs; ofc.lineWidth=2; ofc.stroke();
             ofc.fillStyle = cs; ofc.beginPath();
             for(var i=0; i<4; i++){
                 ofc.moveTo(pdx+Math.sin(Math.PI/2*i)*ps*0.9, pdy+Math.cos(Math.PI/2*i)*ps*0.9);
@@ -82,14 +73,7 @@
                 ofc.lineTo(pdx+Math.sin(Math.PI/2*i-0.3)*ps*0.6, pdy+Math.cos(Math.PI/2*i-0.3)*ps*0.6);
             }
             ofc.fill();
-            // 決定ボタン
             ofc.beginPath(); ofc.arc(pbx, pby, bs, 0, Math.PI*2); ofc.fill(); ofc.stroke();
-            ofc.fillStyle = cs; ofc.beginPath();
-            ofc.moveTo(pbx+bs/7+Math.sin(0.2)*bs*0.6, pby-bs/7-Math.cos(0.2)*bs*0.6);
-            ofc.lineTo(pbx+bs/7+Math.sin(Math.PI/2-0.2)*bs*0.6, pby-bs/7-Math.cos(Math.PI/2-0.2)*bs*0.6);
-            ofc.lineTo(pbx+bs/7-Math.sin(0.2)*bs*0.6, pby-bs/7+Math.cos(0.2)*bs*0.6);
-            ofc.lineTo(pbx+bs/7-Math.sin(Math.PI/2-0.2)*bs*0.6, pby-bs/7+Math.cos(Math.PI/2-0.2)*bs*0.6);
-            ofc.fill();
         }
 
         function drawGrid() {
@@ -101,12 +85,7 @@
             ofc.strokeStyle=cl;
             for(var i=0;i<=fmx;i++){ ofc.lineWidth=(i%5==0)?2:1; ofc.strokeStyle=(i%5==0)?cm:cl; ofc.beginPath(); ofc.moveTo(fx+i*ds,fy); ofc.lineTo(fx+i*ds,fy+fmy*ds); ofc.stroke(); }
             for(var j=0;j<=fmy;j++){ ofc.lineWidth=(j%5==0)?2:1; ofc.strokeStyle=(j%5==0)?cm:cl; ofc.beginPath(); ofc.moveTo(fx,fy+j*ds); ofc.lineTo(fx+fmx*ds,fy+j*ds); ofc.stroke(); }
-            ofc.strokeStyle="#000"; ofc.strokeRect(fx,fy,fmx*ds,fmy*ds);
-            if(sp>=2) tud();
-            else {
-                ofc.fillStyle=cf; ofc.font="30px sans-serif";
-                ofc.fillText("スマホ用コントローラーを使う場合はここをタップしてください！", pcs.width/2, fy+fmy*ds+100);
-            }
+            if(sp>=2) tud(); else { ofc.fillStyle=cf; ofc.font="32px sans-serif"; ofc.fillText("スマホ用コントローラーを使う場合はここをタップしてください！", pcs.width/2, fy+fmy*ds+150); }
         }
 
         function refresh() {
@@ -126,53 +105,72 @@
             pcx.drawImage(of,0,0);
             pcx.fillStyle=cc; pcx.fillRect(fx+cpx*ds,fy,ds,fmy*ds); pcx.fillRect(fx,fy+cpy*ds,fmx*ds,ds);
             pcx.strokeStyle=ccC; pcx.lineWidth=2; pcx.strokeRect(fx+cpx*ds,fy+cpy*ds,ds,ds);
-            // 正解判定
-            var comp=0; for(var i=0;i<fmx;i++) if(ppY[i]) comp++; for(var i=0;i<fmy;i++) if(ppX[i]) comp++;
-            if(comp==fmx+fmy && pp==0) { alert("正解です！おめでとうございます！"); pp=1; }
         }
 
-        // 外部Undo/Redo
+        function paint() {
+            if(map[cpx][cpy] == currentInputMode) return;
+            if(ct==1 || ct==0) { save(); } // 最初の1歩だけ保存
+            map[cpx][cpy] = currentInputMode; refresh();
+        }
+
+        // コントローラー判定
+        function padCtrl(ptX, ptY) {
+            var lenP = Math.sqrt(Math.pow(ptX-pdx,2)+Math.pow(ptY-pdy,2));
+            if(lenP < ps*1.2) {
+                if(lenP < ps*0.2) return 0;
+                var tan = Math.atan2(ptY-pdy, ptX-pdx);
+                pc_x=0; pc_y=0;
+                if(Math.abs(tan)<Math.PI/4){ pc_x=1; pf=4; }
+                else if(Math.abs(tan)>Math.PI*0.75){ pc_x=-1; pf=1; }
+                else if(tan>0){ pc_y=1; pf=8; } else { pc_y=-1; pf=2; }
+                return 1;
+            }
+            var lenB = Math.sqrt(Math.pow(ptX-pbx,2)+Math.pow(ptY-pby,2));
+            if(lenB < bs*1.2) { pf=16; return 2; }
+            return 0;
+        }
+
+        // タイマー処理 (重要: これがコントローラーを動かす心臓部)
+        setInterval(function(){
+            if(ct>0) {
+                ct++;
+                if(ct>5 && (ct>10 || ct%2==0)) {
+                    cpx += pc_x; cpy += pc_y;
+                    if(cpx<0)cpx=0; if(cpx>=fmx)cpx=fmx-1; if(cpy<0)cpy=0; if(cpy>=fmy)cpy=fmy-1;
+                    if(pf==16) paint();
+                    refresh();
+                }
+            }
+        }, 80);
+
         window.execUndo = function() { if(undoStack.length>0){ redoStack.push(JSON.stringify(map)); map=JSON.parse(undoStack.pop()); refresh(); } };
         window.execRedo = function() { if(redoStack.length>0){ undoStack.push(JSON.stringify(map)); map=JSON.parse(redoStack.pop()); refresh(); } };
-
         function save() { undoStack.push(JSON.stringify(map)); if(undoStack.length>50)undoStack.shift(); redoStack=[]; }
 
-        // マウス/タッチ共通処理
-        pcs.addEventListener("mousedown", function(e){
+        function handleInput(ex, ey, isDown) {
             var rect = pcs.getBoundingClientRect();
-            var mx = e.clientX - rect.left, my = e.clientY - rect.top;
-            if(my > fy + fmy*ds && sp < 2) { sp=2; refresh(); return; }
-            var tx = Math.floor((mx-fx)/ds), ty = Math.floor((my-fy)/ds);
-            if(tx>=0 && tx<fmx && ty>=0 && ty<fmy) { save(); cpx=tx; cpy=ty; map[tx][ty]=currentInputMode; refresh(); pf=1; }
-        });
+            var mx = ex - rect.left, my = ey - rect.top;
+            if(isDown && my > fy + fmy*ds && sp < 2) { sp=2; refresh(); return; }
+            if(sp>=2 && my > fy + fmy*ds) {
+                if(isDown) { if(padCtrl(mx, my)>0) ct=1; if(pf==16) paint(); }
+                else { ct=0; pf=0; pc_x=0; pc_y=0; }
+            } else {
+                var tx = Math.floor((mx-fx)/ds), ty = Math.floor((my-fy)/ds);
+                if(tx>=0 && tx<fmx && ty>=0 && ty<fmy) {
+                    if(isDown) { save(); cpx=tx; cpy=ty; map[tx][ty]=currentInputMode; }
+                    else { cpx=tx; cpy=ty; }
+                    refresh();
+                }
+            }
+        }
 
-        pcs.addEventListener("mousemove", function(e){
-            if(e.buttons !== 1) return;
-            var rect = pcs.getBoundingClientRect();
-            var tx = Math.floor((e.clientX-rect.left-fx)/ds), ty = Math.floor((e.clientY-rect.top-fy)/ds);
-            if(tx>=0 && tx<fmx && ty>=0 && ty<fmy && (cpx!=tx || cpy!=ty)) { cpx=tx; cpy=ty; map[tx][ty]=currentInputMode; refresh(); }
-        });
-
-        // スマホタッチ
-        pcs.addEventListener("touchstart", function(e){
-            var rect = pcs.getBoundingClientRect();
-            var t = e.touches[0];
-            var mx = t.clientX - rect.left, my = t.clientY - rect.top;
-            if(my > fy+fmy*ds && sp<2){ sp=2; refresh(); e.preventDefault(); return; }
-            var tx = Math.floor((mx-fx)/ds), ty = Math.floor((my-fy)/ds);
-            if(tx>=0 && tx<fmx && ty>=0 && ty<fmy) { save(); cpx=tx; cpy=ty; map[tx][ty]=currentInputMode; refresh(); e.preventDefault(); }
-        }, {passive: false});
-
-        pcs.addEventListener("touchmove", function(e){
-            var rect = pcs.getBoundingClientRect();
-            var t = e.touches[0];
-            var tx = Math.floor((t.clientX-rect.left-fx)/ds), ty = Math.floor((t.clientY-rect.top-fy)/ds);
-            if(tx>=0 && tx<fmx && ty>=0 && ty<fmy && (cpx!=tx || cpy!=ty)) { cpx=tx; cpy=ty; map[tx][ty]=currentInputMode; refresh(); e.preventDefault(); }
-        }, {passive: false});
+        pcs.addEventListener("mousedown", (e) => handleInput(e.clientX, e.clientY, true));
+        window.addEventListener("mouseup", () => { ct=0; pf=0; });
+        pcs.addEventListener("touchstart", (e) => { handleInput(e.touches[0].clientX, e.touches[0].clientY, true); e.preventDefault(); }, {passive:false});
+        pcs.addEventListener("touchend", () => { ct=0; pf=0; });
 
         refresh();
     }
-
     window.onload = mf_start;
 </script>
 </body>
