@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>イラストロジック - 完全機能版</title>
+    <title>イラストロジック - 高機能判定版</title>
     <style>
         body { margin: 0; padding: 0; background: #f0f0f0; font-family: sans-serif; touch-action: pan-x pan-y; }
         #ui-panel { 
@@ -39,11 +39,9 @@
     var undoStack = [], redoStack = [], currentInputMode = 1;
     var isMouseDown = false, isFinished = false;
 
-    // パズルデータ（ヒント数字）
     var ln=[[0],[2,2,2,1],[1,1,1,2],[1,1,1,4],[2,2,2,1],[0],[3,2,2,2,2,2],[5,4,4,3,3,3],[1,2,1,2,1,2,4,3,3],[2,2,2,1,2,1,2,1,2],[2,2,2,2,2,1,2,1,2],[2,4,1,1,4,1,2,4,1,2,1,2],[2,2,2,2,2,1,2,1,2],[2,2,2,7,12],[5,4,4,2,2,2],[5,4,4,2,2,2],[0],[50],[0],[3,2,2,2,2,2],[5,4,4,3,3,3],[1,2,1,2,1,2,4,3,3],[2,2,2,1,1,2,1,2,1,2],[2,2,2,2,1,2,2,2,1,2,1,2],[2,2,1,1,5,1,2,2,1,2,1,2],[2,2,2,1,2,2,1,2,1,2],[2,2,2,1,7,12],[5,4,4,2,2,2],[5,4,4,2,2,2],[0]];
     var tn=[[2,3,1,2,3],[2,4,1,2,4],[2,2,2,1,2,2,2],[6,2,1,6,2],[1,2,4,2,1,4,2],[2,1,1],[1,1],[1,2,1,1,2],[2,1,1,1,2],[1,1],[1],[2,3,1,2,3],[2,4,1,2,4],[7,2,1,7,2],[4,2,1,4,2],[1],[2,3,1,2,3],[2,4,1,2,4],[7,2,1,7,2],[1,2,4,2,1,4,2],[2,1,1,1],[1,1,1],[1,1,5],[1,1,1],[1,1,1],[1],[2,1,2],[4,1,4],[3,1,1,3,1],[2,1,1,2,1],[10,1,10],[10,1,10],[1,1,1],[1,1],[1,1,2],[1,1,2],[1,1],[1],[3,1,3],[2,1,1,2,1],[2,1,1,2,1],[10,1,10],[10,1,10],[1,1,1],[3,1,3],[2,1,1,2,1],[1,2,1,1,2,1],[2,10,1,10],[4,10,1,10],[1,1,1,1]];
     
-    // 正解判定用(全塗り潰しデータは省略しますが、完成時にチェックします)
     var fmx=50, fmy=30;
     var map = Array.from({length:fmx}, () => Array(fmy).fill(0));
 
@@ -57,33 +55,58 @@
         var pcs = document.getElementById('pz_canvas'), pcx = pcs.getContext('2d');
         var of = document.createElement('canvas'); of.width = pcs.width; of.height = pcs.height;
         var ofc = of.getContext('2d');
-
         var ds=24, fx=360, fy=216;
         var c1="#FFFFFF", cw="#FFFFFF", cl="#AAAAAA", cm="#CC2222", cf="#000000", cc="rgba(0,207,255,0.20)", ccC="#00CFFF", cs="#444444", cb1="#FFFFFF", cb2="#CCCCCC";
         var ps=326, pdx=ps+24, pdy=fy+fmy*ds+204+ps, bs=272, pbx=pcs.width-bs-24, pby=pdy;
         var cpx=0, cpy=0, sp=0, pf=0, ct=0, pc_x=0, pc_y=0;
 
-        // 指定した列・行の連続黒マス数を取得する関数
-        function getSequence(arr) {
-            var res = [], count = 0;
-            for(var v of arr) {
-                if(v === 1) count++;
-                else if(count > 0) { res.push(count); count = 0; }
-            }
-            if(count > 0) res.push(count);
-            return res.length === 0 ? [0] : res;
-        }
+        // --- ロジックコア：端からの確定チェックと矛盾チェック ---
+        function checkHintStatus(cells, hints) {
+            var status = hints.map(() => ({ done: false }));
+            var error = false;
 
-        // 数字の色を判定する関数
-        function getHintColor(currentSeq, targetSeq) {
-            if(currentSeq.join(',') === targetSeq.join(',')) return "#CCCCCC"; // 確定（薄いグレー）
-            var curSum = currentSeq.reduce((a,b)=>a+b,0);
-            var tarSum = targetSeq.reduce((a,b)=>a+b,0);
-            if(curSum > tarSum) return "#FF0000"; // 塗りすぎ（赤）
-            for(var i=0; i<currentSeq.length; i++) {
-                if(currentSeq[i] > (targetSeq[i] || 0)) return "#FF0000"; // 連続数がヒント超え（赤）
+            // 1. 矛盾チェック（赤字判定用）
+            var currentBlocks = [];
+            var count = 0;
+            for(var v of cells) {
+                if(v === 1) count++;
+                else if(count > 0) { currentBlocks.push(count); count = 0; }
             }
-            return "#000000"; // 進行中（黒）
+            if(count > 0) currentBlocks.push(count);
+
+            // 塗りすぎチェック
+            if(currentBlocks.length > hints.length) error = true;
+            for(var i=0; i < currentBlocks.length; i++) {
+                if(hints[i] === 0 || currentBlocks[i] > (hints[i] || 0)) error = true;
+            }
+
+            // 2. 端からの確定スキャン（グレー判定用）
+            if(hints[0] !== 0) {
+                var cellIdx = 0;
+                for(var hIdx = 0; hIdx < hints.length; hIdx++) {
+                    // 空白/バツを飛ばす
+                    while(cellIdx < cells.length && cells[cellIdx] === 2) cellIdx++;
+                    
+                    var start = cellIdx;
+                    var blackCount = 0;
+                    while(cellIdx < cells.length && cells[cellIdx] === 1) {
+                        blackCount++;
+                        cellIdx++;
+                    }
+
+                    // ヒントの数と一致し、かつその次が確定（バツまたは端）しているならグレー
+                    if(blackCount === hints[hIdx]) {
+                        if(cellIdx === cells.length || cells[cellIdx] === 2) {
+                            status[hIdx].done = true;
+                        } else {
+                            break; // 次が未確定ならそれ以降も未確定
+                        }
+                    } else {
+                        break; // 数が合わないなら終了
+                    }
+                }
+            }
+            return { status, error };
         }
 
         function drawGrid() {
@@ -91,20 +114,21 @@
             ofc.fillStyle=cw; ofc.fillRect(fx,fy,fmx*ds,fmy*ds);
             ofc.font=(ds*0.75)+"px Arial"; ofc.textAlign="center";
 
-            // 列数字の描画
+            // 列の判定と描画
             for(var i=0; i<fmx; i++) {
-                var colArr = []; for(var y=0; y<fmy; y++) colArr.push(map[i][y]);
-                var color = getHintColor(getSequence(colArr), tn[i]);
-                ofc.fillStyle = color;
+                var col = []; for(var y=0; y<fmy; y++) col.push(map[i][y]);
+                var res = checkHintStatus(col, tn[i]);
                 for(var j=0; j<tn[i].length; j++) {
+                    ofc.fillStyle = res.error ? "#FF0000" : (res.status[j].done ? "#CCCCCC" : "#000000");
                     ofc.fillText(tn[i][j], fx+i*ds+ds/2, fy-(tn[i].length-j-1)*ds-4);
                 }
             }
-            // 行数字の描画
+            // 行の判定と描画
             for(var i=0; i<fmy; i++) {
-                var color = getHintColor(getSequence(map.map(row => row[i])), ln[i]);
-                ofc.fillStyle = color;
+                var row = map.map(r => r[i]);
+                var res = checkHintStatus(row, ln[i]);
                 for(var j=0; j<ln[i].length; j++) {
+                    ofc.fillStyle = res.error ? "#FF0000" : (res.status[j].done ? "#CCCCCC" : "#000000");
                     ofc.fillText(ln[i][j], fx-(ln[i].length-j)*ds+ds/2, fy+(i+1)*ds-4);
                 }
             }
@@ -115,7 +139,7 @@
             if(sp>=2) tud(); else { ofc.fillStyle="#666"; ofc.font="32px sans-serif"; ofc.fillText("ここをタップしてコントローラーを表示", pcs.width/2, fy+fmy*ds+150); }
         }
 
-        // --- 以下、既存の操作・判定ロジック ---
+        // --- 以下共通処理 ---
         function tud(){
             ofc.beginPath(); var pbc = ofc.createLinearGradient(pdx, pdy-ps, pdx, pdy+ps);
             pbc.addColorStop(0, cb1); pbc.addColorStop(1, cb2); ofc.fillStyle = pbc;
@@ -148,10 +172,13 @@
         function checkAllClear() {
             for(var i=0; i<fmx; i++) {
                 var col = []; for(var y=0; y<fmy; y++) col.push(map[i][y]);
-                if(getSequence(col).join(',') !== tn[i].join(',')) return;
+                var s = []; var c=0; for(var v of col){ if(v==1)c++; else if(c>0){s.push(c);c=0;} } if(c>0)s.push(c); if(s.length==0)s=[0];
+                if(s.join(',') !== tn[i].join(',')) return;
             }
             for(var i=0; i<fmy; i++) {
-                if(getSequence(map.map(r=>r[i])).join(',') !== ln[i].join(',')) return;
+                var row = map.map(r=>r[i]);
+                var s = []; var c=0; for(var v of row){ if(v==1)c++; else if(c>0){s.push(c);c=0;} } if(c>0)s.push(c); if(s.length==0)s=[0];
+                if(s.join(',') !== ln[i].join(',')) return;
             }
             isFinished = true;
             document.getElementById('title_msg').innerText = "正解です！おめでとう！";
@@ -241,9 +268,7 @@
             }
         }, {passive:false});
 
-        pcs.addEventListener("touchend", function(e) {
-            if(e.touches.length === 0) { ct = 0; pf &= ~16; pc_x = 0; pc_y = 0; }
-        });
+        pcs.addEventListener("touchend", function(e) { if(e.touches.length === 0) { ct = 0; pf &= ~16; pc_x = 0; pc_y = 0; } });
 
         pcs.addEventListener("mousedown", function(e) {
             if(isFinished) return;
