@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>イラストロジック - 最終完成版</title>
+    <title>イラストロジック - コントローラー安定版</title>
     <style>
         body { margin: 0; padding: 0; background: #f0f0f0; font-family: sans-serif; touch-action: pan-x pan-y; }
         #ui-panel { 
@@ -21,7 +21,6 @@
             max-width: 100%; height: auto; display: block; margin: 0 auto;
             touch-action: none; background: #fff;
         }
-        h1 { font-size: 18px; margin: 10px 0; color: #333; }
     </style>
 </head>
 <body>
@@ -121,73 +120,114 @@
             map[cpx][cpy] = currentInputMode; refresh();
         }
 
-        setInterval(function(){ if(ct>0) { ct++; if(ct>8 && ct%2==0 && (pc_x!==0 || pc_y!==0)) moveCursor(pc_x,pc_y); } }, 60);
+        // 長押しタイマーの安定化
+        setInterval(function(){ 
+            if(ct > 0) { 
+                ct++; 
+                if(ct > 8 && ct % 2 == 0 && (pc_x !== 0 || pc_y !== 0)) moveCursor(pc_x, pc_y); 
+            } 
+        }, 60);
 
         window.execUndo = function() { if(undoStack.length>0){ redoStack.push(JSON.stringify(map)); map=JSON.parse(undoStack.pop()); refresh(); } };
         window.execRedo = function() { if(redoStack.length>0){ undoStack.push(JSON.stringify(map)); map=JSON.parse(redoStack.pop()); refresh(); } };
         function save() { undoStack.push(JSON.stringify(map)); if(undoStack.length>50)undoStack.shift(); redoStack=[]; }
 
-        // --- 入力制御ロジック ---
-        function getCanvasPos(ex, ey) {
+        function getPos(ex, ey) {
             var rect = pcs.getBoundingClientRect();
-            return {
-                x: (ex - rect.left) * (pcs.width / rect.width),
-                y: (ey - rect.top) * (pcs.height / rect.height)
-            };
+            return { x: (ex - rect.left) * (pcs.width / rect.width), y: (ey - rect.top) * (pcs.height / rect.height) };
         }
 
-        function handlePad(touches) {
-            var hasJoy = false, hasBtn = false;
-            for(var i=0; i<touches.length; i++) {
-                var p = getCanvasPos(touches[i].clientX, touches[i].clientY);
+        // --- タッチ入力 ---
+        pcs.addEventListener("touchstart", function(e) {
+            var isControlling = false;
+            var hasBtn = false, hasJoy = false;
+
+            for(var i=0; i<e.touches.length; i++){
+                var p = getPos(e.touches[i].clientX, e.touches[i].clientY);
                 if(sp < 2 && p.y > fy + fmy*ds) { sp=2; refresh(); return; }
                 
-                var lenP = Math.sqrt(Math.pow(p.x-pdx,2)+Math.pow(p.y-pdy,2));
-                var lenB = Math.sqrt(Math.pow(p.x-pbx,2)+Math.pow(p.y-pby,2));
-                
-                if(lenP < ps*1.2) {
-                    var tan = Math.atan2(p.y-pdy, p.x-pdx);
-                    pc_x=0; pc_y=0;
-                    if(Math.abs(tan)<Math.PI/4) pc_x=1; else if(Math.abs(tan)>Math.PI*0.75) pc_x=-1; else if(tan>0) pc_y=1; else pc_y=-1;
-                    hasJoy = true;
-                } else if(lenB < bs*1.2) { hasBtn = true; }
+                if(sp >= 2 && p.y > fy + fmy*ds) {
+                    isControlling = true;
+                    var lenP = Math.sqrt(Math.pow(p.x-pdx,2)+Math.pow(p.y-pdy,2));
+                    var lenB = Math.sqrt(Math.pow(p.x-pbx,2)+Math.pow(p.y-pby,2));
+                    if(lenP < ps*1.2) {
+                        var tan = Math.atan2(p.y-pdy, p.x-pdx);
+                        pc_x=0; pc_y=0;
+                        if(Math.abs(tan)<Math.PI/4) pc_x=1; else if(Math.abs(tan)>Math.PI*0.75) pc_x=-1; else if(tan>0) pc_y=1; else pc_y=-1;
+                        hasJoy = true;
+                    } else if(lenB < bs*1.2) { hasBtn = true; }
+                }
             }
-            if(hasBtn && !(pf & 16)) { save(); pf |= 16; paintCell(); }
-            if(!hasBtn) pf &= ~16;
-            if(hasJoy && ct === 0) { save(); ct = 1; moveCursor(pc_x, pc_y); }
-            if(!hasJoy) { ct = 0; pc_x = 0; pc_y = 0; }
-        }
 
-        // マウス用
-        pcs.addEventListener("mousedown", (e) => {
-            var p = getCanvasPos(e.clientX, e.clientY);
-            if(p.y < fy + fmy*ds) { isMouseDown=true; save(); cpx=Math.floor((p.x-fx)/ds); cpy=Math.floor((p.y-fy)/ds); map[cpx][cpy]=currentInputMode; refresh(); }
-        });
-        window.addEventListener("mousemove", (e) => {
-            if(!isMouseDown) return;
-            var p = getCanvasPos(e.clientX, e.clientY);
-            var tx=Math.floor((p.x-fx)/ds), ty=Math.floor((p.y-fy)/ds);
-            if(tx>=0 && tx<fmx && ty>=0 && ty<fmy && (cpx!=tx || cpy!=ty)) { cpx=tx; cpy=ty; map[tx][ty]=currentInputMode; refresh(); }
-        });
-        window.addEventListener("mouseup", () => { isMouseDown=false; });
-
-        // スマホ用（マルチタッチ完全分離）
-        pcs.addEventListener("touchstart", (e) => {
-            var p = getCanvasPos(e.touches[0].clientX, e.touches[0].clientY);
-            if(p.y > fy + fmy*ds || sp >= 2) { handlePad(e.touches); } 
-            else { save(); cpx=Math.floor((p.x-fx)/ds); cpy=Math.floor((p.y-fy)/ds); map[cpx][cpy]=currentInputMode; refresh(); }
-            e.preventDefault();
+            if(isControlling) {
+                if(hasBtn && !(pf & 16)) { save(); pf |= 16; paintCell(); }
+                if(!hasBtn) pf &= ~16;
+                if(hasJoy && ct === 0) { save(); ct = 1; moveCursor(pc_x, pc_y); }
+                if(!hasJoy) { ct = 0; pc_x = 0; pc_y = 0; }
+                e.preventDefault();
+            } else {
+                var p = getPos(e.touches[0].clientX, e.touches[0].clientY);
+                if(p.x >= fx && p.x < fx+fmx*ds && p.y >= fy && p.y < fy+fmy*ds) {
+                    save(); cpx=Math.floor((p.x-fx)/ds); cpy=Math.floor((p.y-fy)/ds); map[cpx][cpy]=currentInputMode; refresh();
+                }
+            }
         }, {passive:false});
-        pcs.addEventListener("touchmove", (e) => {
-            var p = getCanvasPos(e.touches[0].clientX, e.touches[0].clientY);
-            if(p.y > fy + fmy*ds) { handlePad(e.touches); } 
-            else if(e.touches.length === 1) {
+
+        pcs.addEventListener("touchmove", function(e) {
+            var hasBtn = false, hasJoy = false, onPad = false;
+            for(var i=0; i<e.touches.length; i++){
+                var p = getPos(e.touches[i].clientX, e.touches[i].clientY);
+                if(sp >= 2 && p.y > fy + fmy*ds) {
+                    onPad = true;
+                    var lenP = Math.sqrt(Math.pow(p.x-pdx,2)+Math.pow(p.y-pdy,2));
+                    var lenB = Math.sqrt(Math.pow(p.x-pbx,2)+Math.pow(p.y-pby,2));
+                    if(lenP < ps*1.2) {
+                        var tan = Math.atan2(p.y-pdy, p.x-pdx);
+                        pc_x=0; pc_y=0;
+                        if(Math.abs(tan)<Math.PI/4) pc_x=1; else if(Math.abs(tan)>Math.PI*0.75) pc_x=-1; else if(tan>0) pc_y=1; else pc_y=-1;
+                        hasJoy = true;
+                    } else if(lenB < bs*1.2) { hasBtn = true; }
+                }
+            }
+            if(onPad) {
+                if(hasBtn && !(pf & 16)) { save(); pf |= 16; paintCell(); }
+                if(!hasBtn) pf &= ~16;
+                if(hasJoy && ct === 0) { save(); ct = 1; moveCursor(pc_x, pc_y); }
+                if(!hasJoy) { ct = 0; pc_x = 0; pc_y = 0; }
+                e.preventDefault();
+            } else if(e.touches.length === 1) {
+                var p = getPos(e.touches[0].clientX, e.touches[0].clientY);
                 var tx=Math.floor((p.x-fx)/ds), ty=Math.floor((p.y-fy)/ds);
                 if(tx>=0 && tx<fmx && ty>=0 && ty<fmy && (cpx!=tx || cpy!=ty)) { cpx=tx; cpy=ty; map[tx][ty]=currentInputMode; refresh(); }
             }
-            e.preventDefault();
         }, {passive:false});
-        pcs.addEventListener("touchend", (e) => { handlePad(e.touches); });
+
+        pcs.addEventListener("touchend", function(e) {
+            if(e.touches.length === 0) { ct = 0; pf &= ~16; pc_x = 0; pc_y = 0; }
+            else { /* 残っている指で再判定 */ 
+                var hasBtn = false, hasJoy = false;
+                for(var i=0; i<e.touches.length; i++){
+                    var p = getPos(e.touches[i].clientX, e.touches[i].clientY);
+                    var lenP = Math.sqrt(Math.pow(p.x-pdx,2)+Math.pow(p.y-pdy,2));
+                    var lenB = Math.sqrt(Math.pow(p.x-pbx,2)+Math.pow(p.y-pby,2));
+                    if(lenP < ps*1.2) hasJoy = true; else if(lenB < bs*1.2) hasBtn = true;
+                }
+                if(!hasBtn) pf &= ~16; if(!hasJoy) { ct = 0; pc_x = 0; pc_y = 0; }
+            }
+        });
+
+        // --- PCマウス入力 ---
+        pcs.addEventListener("mousedown", function(e) {
+            var p = getPos(e.clientX, e.clientY);
+            if(p.y < fy + fmy*ds) { isMouseDown=true; save(); cpx=Math.floor((p.x-fx)/ds); cpy=Math.floor((p.y-fy)/ds); map[cpx][cpy]=currentInputMode; refresh(); }
+        });
+        window.addEventListener("mousemove", function(e) {
+            if(!isMouseDown) return;
+            var p = getPos(e.clientX, e.clientY);
+            var tx=Math.floor((p.x-fx)/ds), ty=Math.floor((p.y-fy)/ds);
+            if(tx>=0 && tx<fmx && ty>=0 && ty<fmy && (cpx!=tx || cpy!=ty)) { cpx=tx; cpy=ty; map[tx][ty]=currentInputMode; refresh(); }
+        });
+        window.addEventListener("mouseup", function() { isMouseDown=false; });
 
         refresh();
     }
