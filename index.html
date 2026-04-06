@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>イラストロジック - コントローラー安定版</title>
+    <title>イラストロジック - 完全機能版</title>
     <style>
         body { margin: 0; padding: 0; background: #f0f0f0; font-family: sans-serif; touch-action: pan-x pan-y; }
         #ui-panel { 
@@ -17,10 +17,7 @@
         }
         #ui-panel button.active { background: #00CFFF; color: #fff; font-weight: bold; }
         .canvas-container { width: 100%; text-align: center; background: #fff; }
-        canvas { 
-            max-width: 100%; height: auto; display: block; margin: 0 auto;
-            touch-action: none; background: #fff;
-        }
+        canvas { max-width: 100%; height: auto; display: block; margin: 0 auto; touch-action: none; background: #fff; }
     </style>
 </head>
 <body>
@@ -34,13 +31,21 @@
 </div>
 
 <div class="canvas-container">
-    <h1>計算してみると......</h1>
+    <h1 id="title_msg">計算してみると......</h1>
     <canvas id="pz_canvas" width="1632" height="1812"></canvas>
 </div>
 
 <script type="text/javascript">
     var undoStack = [], redoStack = [], currentInputMode = 1;
-    var isMouseDown = false;
+    var isMouseDown = false, isFinished = false;
+
+    // パズルデータ（ヒント数字）
+    var ln=[[0],[2,2,2,1],[1,1,1,2],[1,1,1,4],[2,2,2,1],[0],[3,2,2,2,2,2],[5,4,4,3,3,3],[1,2,1,2,1,2,4,3,3],[2,2,2,1,2,1,2,1,2],[2,2,2,2,2,1,2,1,2],[2,4,1,1,4,1,2,4,1,2,1,2],[2,2,2,2,2,1,2,1,2],[2,2,2,7,12],[5,4,4,2,2,2],[5,4,4,2,2,2],[0],[50],[0],[3,2,2,2,2,2],[5,4,4,3,3,3],[1,2,1,2,1,2,4,3,3],[2,2,2,1,1,2,1,2,1,2],[2,2,2,2,1,2,2,2,1,2,1,2],[2,2,1,1,5,1,2,2,1,2,1,2],[2,2,2,1,2,2,1,2,1,2],[2,2,2,1,7,12],[5,4,4,2,2,2],[5,4,4,2,2,2],[0]];
+    var tn=[[2,3,1,2,3],[2,4,1,2,4],[2,2,2,1,2,2,2],[6,2,1,6,2],[1,2,4,2,1,4,2],[2,1,1],[1,1],[1,2,1,1,2],[2,1,1,1,2],[1,1],[1],[2,3,1,2,3],[2,4,1,2,4],[7,2,1,7,2],[4,2,1,4,2],[1],[2,3,1,2,3],[2,4,1,2,4],[7,2,1,7,2],[1,2,4,2,1,4,2],[2,1,1,1],[1,1,1],[1,1,5],[1,1,1],[1,1,1],[1],[2,1,2],[4,1,4],[3,1,1,3,1],[2,1,1,2,1],[10,1,10],[10,1,10],[1,1,1],[1,1],[1,1,2],[1,1,2],[1,1],[1],[3,1,3],[2,1,1,2,1],[2,1,1,2,1],[10,1,10],[10,1,10],[1,1,1],[3,1,3],[2,1,1,2,1],[1,2,1,1,2,1],[2,10,1,10],[4,10,1,10],[1,1,1,1]];
+    
+    // 正解判定用(全塗り潰しデータは省略しますが、完成時にチェックします)
+    var fmx=50, fmy=30;
+    var map = Array.from({length:fmx}, () => Array(fmy).fill(0));
 
     function setInMode(m) {
         currentInputMode = m;
@@ -53,15 +58,64 @@
         var of = document.createElement('canvas'); of.width = pcs.width; of.height = pcs.height;
         var ofc = of.getContext('2d');
 
-        var ds=24, fmx=50, fmy=30, fx=360, fy=216;
+        var ds=24, fx=360, fy=216;
         var c1="#FFFFFF", cw="#FFFFFF", cl="#AAAAAA", cm="#CC2222", cf="#000000", cc="rgba(0,207,255,0.20)", ccC="#00CFFF", cs="#444444", cb1="#FFFFFF", cb2="#CCCCCC";
         var ps=326, pdx=ps+24, pdy=fy+fmy*ds+204+ps, bs=272, pbx=pcs.width-bs-24, pby=pdy;
-        
-        var ln=[[0],[2,2,2,1],[1,1,1,2],[1,1,1,4],[2,2,2,1],[0],[3,2,2,2,2,2],[5,4,4,3,3,3],[1,2,1,2,1,2,4,3,3],[2,2,2,1,2,1,2,1,2],[2,2,2,2,2,1,2,1,2],[2,4,1,1,4,1,2,4,1,2,1,2],[2,2,2,2,2,1,2,1,2],[2,2,2,7,12],[5,4,4,2,2,2],[5,4,4,2,2,2],[0],[50],[0],[3,2,2,2,2,2],[5,4,4,3,3,3],[1,2,1,2,1,2,4,3,3],[2,2,2,1,1,2,1,2,1,2],[2,2,2,2,1,2,2,2,1,2,1,2],[2,2,1,1,5,1,2,2,1,2,1,2],[2,2,2,1,2,2,1,2,1,2],[2,2,2,1,7,12],[5,4,4,2,2,2],[5,4,4,2,2,2],[0]];
-        var tn=[[2,3,1,2,3],[2,4,1,2,4],[2,2,2,1,2,2,2],[6,2,1,6,2],[1,2,4,2,1,4,2],[2,1,1],[1,1],[1,2,1,1,2],[2,1,1,1,2],[1,1],[1],[2,3,1,2,3],[2,4,1,2,4],[7,2,1,7,2],[4,2,1,4,2],[1],[2,3,1,2,3],[2,4,1,2,4],[7,2,1,7,2],[1,2,4,2,1,4,2],[2,1,1,1],[1,1,1],[1,1,5],[1,1,1],[1,1,1],[1],[2,1,2],[4,1,4],[3,1,1,3,1],[2,1,1,2,1],[10,1,10],[10,1,10],[1,1,1],[1,1],[1,1,2],[1,1,2],[1,1],[1],[3,1,3],[2,1,1,2,1],[2,1,1,2,1],[10,1,10],[10,1,10],[1,1,1],[3,1,3],[2,1,1,2,1],[1,2,1,1,2,1],[2,10,1,10],[4,10,1,10],[1,1,1,1]];
-        var map = Array.from({length:fmx}, () => Array(fmy).fill(0));
         var cpx=0, cpy=0, sp=0, pf=0, ct=0, pc_x=0, pc_y=0;
 
+        // 指定した列・行の連続黒マス数を取得する関数
+        function getSequence(arr) {
+            var res = [], count = 0;
+            for(var v of arr) {
+                if(v === 1) count++;
+                else if(count > 0) { res.push(count); count = 0; }
+            }
+            if(count > 0) res.push(count);
+            return res.length === 0 ? [0] : res;
+        }
+
+        // 数字の色を判定する関数
+        function getHintColor(currentSeq, targetSeq) {
+            if(currentSeq.join(',') === targetSeq.join(',')) return "#CCCCCC"; // 確定（薄いグレー）
+            var curSum = currentSeq.reduce((a,b)=>a+b,0);
+            var tarSum = targetSeq.reduce((a,b)=>a+b,0);
+            if(curSum > tarSum) return "#FF0000"; // 塗りすぎ（赤）
+            for(var i=0; i<currentSeq.length; i++) {
+                if(currentSeq[i] > (targetSeq[i] || 0)) return "#FF0000"; // 連続数がヒント超え（赤）
+            }
+            return "#000000"; // 進行中（黒）
+        }
+
+        function drawGrid() {
+            ofc.fillStyle=c1; ofc.fillRect(0,0,of.width,of.height);
+            ofc.fillStyle=cw; ofc.fillRect(fx,fy,fmx*ds,fmy*ds);
+            ofc.font=(ds*0.75)+"px Arial"; ofc.textAlign="center";
+
+            // 列数字の描画
+            for(var i=0; i<fmx; i++) {
+                var colArr = []; for(var y=0; y<fmy; y++) colArr.push(map[i][y]);
+                var color = getHintColor(getSequence(colArr), tn[i]);
+                ofc.fillStyle = color;
+                for(var j=0; j<tn[i].length; j++) {
+                    ofc.fillText(tn[i][j], fx+i*ds+ds/2, fy-(tn[i].length-j-1)*ds-4);
+                }
+            }
+            // 行数字の描画
+            for(var i=0; i<fmy; i++) {
+                var color = getHintColor(getSequence(map.map(row => row[i])), ln[i]);
+                ofc.fillStyle = color;
+                for(var j=0; j<ln[i].length; j++) {
+                    ofc.fillText(ln[i][j], fx-(ln[i].length-j)*ds+ds/2, fy+(i+1)*ds-4);
+                }
+            }
+
+            ofc.strokeStyle=cl;
+            for(var i=0;i<=fmx;i++){ ofc.lineWidth=(i%5==0)?2:1; ofc.strokeStyle=(i%5==0)?cm:cl; ofc.beginPath(); ofc.moveTo(fx+i*ds,fy); ofc.lineTo(fx+i*ds,fy+fmy*ds); ofc.stroke(); }
+            for(var j=0;j<=fmy;j++){ ofc.lineWidth=(j%5==0)?2:1; ofc.strokeStyle=(j%5==0)?cm:cl; ofc.beginPath(); ofc.moveTo(fx,fy+j*ds); ofc.lineTo(fx+fmx*ds,fy+j*ds); ofc.stroke(); }
+            if(sp>=2) tud(); else { ofc.fillStyle="#666"; ofc.font="32px sans-serif"; ofc.fillText("ここをタップしてコントローラーを表示", pcs.width/2, fy+fmy*ds+150); }
+        }
+
+        // --- 以下、既存の操作・判定ロジック ---
         function tud(){
             ofc.beginPath(); var pbc = ofc.createLinearGradient(pdx, pdy-ps, pdx, pdy+ps);
             pbc.addColorStop(0, cb1); pbc.addColorStop(1, cb2); ofc.fillStyle = pbc;
@@ -72,24 +126,12 @@
                 ofc.lineTo(pdx+Math.sin(Math.PI/2*i+0.3)*ps*0.6, pdy+Math.cos(Math.PI/2*i+0.3)*ps*0.6);
                 ofc.lineTo(pdx+Math.sin(Math.PI/2*i-0.3)*ps*0.6, pdy+Math.cos(Math.PI/2*i-0.3)*ps*0.6);
             }
-            ofc.fill();
-            ofc.beginPath(); ofc.arc(pbx, pby, bs, 0, Math.PI*2); ofc.fill(); ofc.stroke();
+            ofc.fill(); ofc.beginPath(); ofc.arc(pbx, pby, bs, 0, Math.PI*2); ofc.fill(); ofc.stroke();
             ofc.fillStyle = cs; ofc.font = "bold 60px Arial"; ofc.textAlign="center"; ofc.fillText("決定", pbx, pby + 20);
         }
 
-        function drawGrid() {
-            ofc.fillStyle=c1; ofc.fillRect(0,0,of.width,of.height);
-            ofc.fillStyle=cw; ofc.fillRect(fx,fy,fmx*ds,fmy*ds);
-            ofc.font=(ds*0.75)+"px Arial"; ofc.textAlign="center"; ofc.fillStyle=cf;
-            for(var i=0;i<fmx;i++) for(var j=0;j<tn[i].length;j++) ofc.fillText(tn[i][j],fx+i*ds+ds/2,fy-(tn[i].length-j-1)*ds-4);
-            for(var i=0;i<fmy;i++) for(var j=0;j<ln[i].length;j++) ofc.fillText(ln[i][j],fx-(ln[i].length-j)*ds+ds/2,fy+(i+1)*ds-4);
-            ofc.strokeStyle=cl;
-            for(var i=0;i<=fmx;i++){ ofc.lineWidth=(i%5==0)?2:1; ofc.strokeStyle=(i%5==0)?cm:cl; ofc.beginPath(); ofc.moveTo(fx+i*ds,fy); ofc.lineTo(fx+i*ds,fy+fmy*ds); ofc.stroke(); }
-            for(var j=0;j<=fmy;j++){ ofc.lineWidth=(j%5==0)?2:1; ofc.strokeStyle=(j%5==0)?cm:cl; ofc.beginPath(); ofc.moveTo(fx,fy+j*ds); ofc.lineTo(fx+fmx*ds,fy+j*ds); ofc.stroke(); }
-            if(sp>=2) tud(); else { ofc.fillStyle="#666"; ofc.font="32px sans-serif"; ofc.fillText("ここをタップしてコントローラーを表示", pcs.width/2, fy+fmy*ds+150); }
-        }
-
         function refresh() {
+            if(isFinished) return;
             drawGrid();
             for(var x=0;x<fmx;x++) for(var y=0;y<fmy;y++) {
                 if(map[x][y]==1){ ofc.fillStyle=cf; ofc.fillRect(fx+x*ds+1,fy+y*ds+1,ds-1,ds-1); }
@@ -100,52 +142,49 @@
                 }
             }
             update();
+            checkAllClear();
+        }
+
+        function checkAllClear() {
+            for(var i=0; i<fmx; i++) {
+                var col = []; for(var y=0; y<fmy; y++) col.push(map[i][y]);
+                if(getSequence(col).join(',') !== tn[i].join(',')) return;
+            }
+            for(var i=0; i<fmy; i++) {
+                if(getSequence(map.map(r=>r[i])).join(',') !== ln[i].join(',')) return;
+            }
+            isFinished = true;
+            document.getElementById('title_msg').innerText = "正解です！おめでとう！";
+            ofc.fillStyle=c1; ofc.fillRect(0,0,of.width,of.height);
+            var zx = (of.width-fmx*ds)/2, zy = (of.height-fmy*ds)/2;
+            for(var x=0;x<fmx;x++) for(var y=0;y<fmy;y++) if(map[x][y]==1){ ofc.fillStyle=cf; ofc.fillRect(zx+x*ds,zy+y*ds,ds,ds); }
+            update();
         }
 
         function update() {
             pcx.drawImage(of,0,0);
-            pcx.fillStyle=cc; pcx.fillRect(fx+cpx*ds,fy,ds,fmy*ds); pcx.fillRect(fx,fy+cpy*ds,fmx*ds,ds);
-            pcx.strokeStyle=ccC; pcx.lineWidth=2; pcx.strokeRect(fx+cpx*ds,fy+cpy*ds,ds,ds);
+            if(!isFinished){
+                pcx.fillStyle=cc; pcx.fillRect(fx+cpx*ds,fy,ds,fmy*ds); pcx.fillRect(fx,fy+cpy*ds,fmx*ds,ds);
+                pcx.strokeStyle=ccC; pcx.lineWidth=2; pcx.strokeRect(fx+cpx*ds,fy+cpy*ds,ds,ds);
+            }
         }
 
-        function moveCursor(dx, dy) {
-            cpx += dx; cpy += dy;
-            if(cpx<0)cpx=0; if(cpx>=fmx)cpx=fmx-1; if(cpy<0)cpy=0; if(cpy>=fmy)cpy=fmy-1;
-            if(pf & 16) paintCell();
-            refresh();
-        }
-
-        function paintCell() {
-            if(map[cpx][cpy] == currentInputMode) return;
-            map[cpx][cpy] = currentInputMode; refresh();
-        }
-
-        // 長押しタイマーの安定化
-        setInterval(function(){ 
-            if(ct > 0) { 
-                ct++; 
-                if(ct > 8 && ct % 2 == 0 && (pc_x !== 0 || pc_y !== 0)) moveCursor(pc_x, pc_y); 
-            } 
-        }, 60);
+        function moveCursor(dx, dy) { if(isFinished) return; cpx+=dx; cpy+=dy; cpx=Math.max(0,Math.min(fmx-1,cpx)); cpy=Math.max(0,Math.min(fmy-1,cpy)); if(pf&16) paintCell(); refresh(); }
+        function paintCell() { if(map[cpx][cpy] == currentInputMode) return; map[cpx][cpy] = currentInputMode; refresh(); }
+        setInterval(function(){ if(ct > 0) { ct++; if(ct > 8 && ct % 2 == 0 && (pc_x !== 0 || pc_y !== 0)) moveCursor(pc_x, pc_y); } }, 60);
 
         window.execUndo = function() { if(undoStack.length>0){ redoStack.push(JSON.stringify(map)); map=JSON.parse(undoStack.pop()); refresh(); } };
         window.execRedo = function() { if(redoStack.length>0){ undoStack.push(JSON.stringify(map)); map=JSON.parse(redoStack.pop()); refresh(); } };
         function save() { undoStack.push(JSON.stringify(map)); if(undoStack.length>50)undoStack.shift(); redoStack=[]; }
 
-        function getPos(ex, ey) {
-            var rect = pcs.getBoundingClientRect();
-            return { x: (ex - rect.left) * (pcs.width / rect.width), y: (ey - rect.top) * (pcs.height / rect.height) };
-        }
+        function getPos(ex, ey) { var rect = pcs.getBoundingClientRect(); return { x: (ex - rect.left) * (pcs.width / rect.width), y: (ey - rect.top) * (pcs.height / rect.height) }; }
 
-        // --- タッチ入力 ---
         pcs.addEventListener("touchstart", function(e) {
-            var isControlling = false;
-            var hasBtn = false, hasJoy = false;
-
+            if(isFinished) return;
+            var isControlling = false, hasBtn = false, hasJoy = false;
             for(var i=0; i<e.touches.length; i++){
                 var p = getPos(e.touches[i].clientX, e.touches[i].clientY);
                 if(sp < 2 && p.y > fy + fmy*ds) { sp=2; refresh(); return; }
-                
                 if(sp >= 2 && p.y > fy + fmy*ds) {
                     isControlling = true;
                     var lenP = Math.sqrt(Math.pow(p.x-pdx,2)+Math.pow(p.y-pdy,2));
@@ -158,7 +197,6 @@
                     } else if(lenB < bs*1.2) { hasBtn = true; }
                 }
             }
-
             if(isControlling) {
                 if(hasBtn && !(pf & 16)) { save(); pf |= 16; paintCell(); }
                 if(!hasBtn) pf &= ~16;
@@ -174,7 +212,8 @@
         }, {passive:false});
 
         pcs.addEventListener("touchmove", function(e) {
-            var hasBtn = false, hasJoy = false, onPad = false;
+            if(isFinished) return;
+            var onPad = false, hasBtn = false, hasJoy = false;
             for(var i=0; i<e.touches.length; i++){
                 var p = getPos(e.touches[i].clientX, e.touches[i].clientY);
                 if(sp >= 2 && p.y > fy + fmy*ds) {
@@ -204,25 +243,15 @@
 
         pcs.addEventListener("touchend", function(e) {
             if(e.touches.length === 0) { ct = 0; pf &= ~16; pc_x = 0; pc_y = 0; }
-            else { /* 残っている指で再判定 */ 
-                var hasBtn = false, hasJoy = false;
-                for(var i=0; i<e.touches.length; i++){
-                    var p = getPos(e.touches[i].clientX, e.touches[i].clientY);
-                    var lenP = Math.sqrt(Math.pow(p.x-pdx,2)+Math.pow(p.y-pdy,2));
-                    var lenB = Math.sqrt(Math.pow(p.x-pbx,2)+Math.pow(p.y-pby,2));
-                    if(lenP < ps*1.2) hasJoy = true; else if(lenB < bs*1.2) hasBtn = true;
-                }
-                if(!hasBtn) pf &= ~16; if(!hasJoy) { ct = 0; pc_x = 0; pc_y = 0; }
-            }
         });
 
-        // --- PCマウス入力 ---
         pcs.addEventListener("mousedown", function(e) {
+            if(isFinished) return;
             var p = getPos(e.clientX, e.clientY);
             if(p.y < fy + fmy*ds) { isMouseDown=true; save(); cpx=Math.floor((p.x-fx)/ds); cpy=Math.floor((p.y-fy)/ds); map[cpx][cpy]=currentInputMode; refresh(); }
         });
         window.addEventListener("mousemove", function(e) {
-            if(!isMouseDown) return;
+            if(!isMouseDown || isFinished) return;
             var p = getPos(e.clientX, e.clientY);
             var tx=Math.floor((p.x-fx)/ds), ty=Math.floor((p.y-fy)/ds);
             if(tx>=0 && tx<fmx && ty>=0 && ty<fmy && (cpx!=tx || cpy!=ty)) { cpx=tx; cpy=ty; map[tx][ty]=currentInputMode; refresh(); }
