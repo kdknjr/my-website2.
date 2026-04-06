@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>イラストロジック - 高機能判定版</title>
+    <title>イラストロジック - 確定判定修正版</title>
     <style>
         body { margin: 0; padding: 0; background: #f0f0f0; font-family: sans-serif; touch-action: pan-x pan-y; }
         #ui-panel { 
@@ -60,49 +60,52 @@
         var ps=326, pdx=ps+24, pdy=fy+fmy*ds+204+ps, bs=272, pbx=pcs.width-bs-24, pby=pdy;
         var cpx=0, cpy=0, sp=0, pf=0, ct=0, pc_x=0, pc_y=0;
 
-        // --- ロジックコア：端からの確定チェックと矛盾チェック ---
+        // --- 修正版ロジック ---
         function checkHintStatus(cells, hints) {
             var status = hints.map(() => ({ done: false }));
             var error = false;
 
-            // 1. 矛盾チェック（赤字判定用）
-            var currentBlocks = [];
-            var count = 0;
+            // 1. 赤字判定（明らかにダメな時だけ）
+            var blackSum = 0;
+            var maxContinuous = 0;
+            var curCont = 0;
             for(var v of cells) {
-                if(v === 1) count++;
-                else if(count > 0) { currentBlocks.push(count); count = 0; }
+                if(v === 1) { 
+                    blackSum++; curCont++; 
+                    if(curCont > Math.max(...hints)) error = true; 
+                } else {
+                    curCont = 0;
+                }
             }
-            if(count > 0) currentBlocks.push(count);
+            if(blackSum > hints.reduce((a,b)=>a+b, 0)) error = true;
 
-            // 塗りすぎチェック
-            if(currentBlocks.length > hints.length) error = true;
-            for(var i=0; i < currentBlocks.length; i++) {
-                if(hints[i] === 0 || currentBlocks[i] > (hints[i] || 0)) error = true;
-            }
-
-            // 2. 端からの確定スキャン（グレー判定用）
+            // 2. 端からの確定グレーアウト判定
+            // 「端から■か☒で隙間なく埋まっている」間だけヒントを消化する
             if(hints[0] !== 0) {
-                var cellIdx = 0;
-                for(var hIdx = 0; hIdx < hints.length; hIdx++) {
-                    // 空白/バツを飛ばす
-                    while(cellIdx < cells.length && cells[cellIdx] === 2) cellIdx++;
+                var hIdx = 0;
+                var i = 0;
+                while (i < cells.length && hIdx < hints.length) {
+                    if (cells[i] === 0) break; // 空白（未確定）にぶつかったらスキャン終了
                     
-                    var start = cellIdx;
-                    var blackCount = 0;
-                    while(cellIdx < cells.length && cells[cellIdx] === 1) {
-                        blackCount++;
-                        cellIdx++;
+                    if (cells[i] === 2) {
+                        i++; // バツは読み飛ばす
+                        continue;
                     }
-
-                    // ヒントの数と一致し、かつその次が確定（バツまたは端）しているならグレー
-                    if(blackCount === hints[hIdx]) {
-                        if(cellIdx === cells.length || cells[cellIdx] === 2) {
+                    
+                    if (cells[i] === 1) {
+                        // 黒マスの塊を計測
+                        var start = i;
+                        while (i < cells.length && cells[i] === 1) i++;
+                        var len = i - start;
+                        
+                        // 今の塊が現在のヒント数字と一致し、かつ直後が「端」か「バツ」なら確定
+                        if (len === hints[hIdx] && (i === cells.length || cells[i] === 2)) {
                             status[hIdx].done = true;
+                            hIdx++;
                         } else {
-                            break; // 次が未確定ならそれ以降も未確定
+                            // 一致しない、または直後が未確定ならこれ以降のスキャンは中止
+                            break;
                         }
-                    } else {
-                        break; // 数が合わないなら終了
                     }
                 }
             }
@@ -114,7 +117,6 @@
             ofc.fillStyle=cw; ofc.fillRect(fx,fy,fmx*ds,fmy*ds);
             ofc.font=(ds*0.75)+"px Arial"; ofc.textAlign="center";
 
-            // 列の判定と描画
             for(var i=0; i<fmx; i++) {
                 var col = []; for(var y=0; y<fmy; y++) col.push(map[i][y]);
                 var res = checkHintStatus(col, tn[i]);
@@ -123,7 +125,6 @@
                     ofc.fillText(tn[i][j], fx+i*ds+ds/2, fy-(tn[i].length-j-1)*ds-4);
                 }
             }
-            // 行の判定と描画
             for(var i=0; i<fmy; i++) {
                 var row = map.map(r => r[i]);
                 var res = checkHintStatus(row, ln[i]);
@@ -132,14 +133,14 @@
                     ofc.fillText(ln[i][j], fx-(ln[i].length-j)*ds+ds/2, fy+(i+1)*ds-4);
                 }
             }
-
+            // ... (以下、枠線描画などは前回のコードと同じ)
             ofc.strokeStyle=cl;
             for(var i=0;i<=fmx;i++){ ofc.lineWidth=(i%5==0)?2:1; ofc.strokeStyle=(i%5==0)?cm:cl; ofc.beginPath(); ofc.moveTo(fx+i*ds,fy); ofc.lineTo(fx+i*ds,fy+fmy*ds); ofc.stroke(); }
             for(var j=0;j<=fmy;j++){ ofc.lineWidth=(j%5==0)?2:1; ofc.strokeStyle=(j%5==0)?cm:cl; ofc.beginPath(); ofc.moveTo(fx,fy+j*ds); ofc.lineTo(fx+fmx*ds,fy+j*ds); ofc.stroke(); }
             if(sp>=2) tud(); else { ofc.fillStyle="#666"; ofc.font="32px sans-serif"; ofc.fillText("ここをタップしてコントローラーを表示", pcs.width/2, fy+fmy*ds+150); }
         }
 
-        // --- 以下共通処理 ---
+        // --- 操作系 ---
         function tud(){
             ofc.beginPath(); var pbc = ofc.createLinearGradient(pdx, pdy-ps, pdx, pdy+ps);
             pbc.addColorStop(0, cb1); pbc.addColorStop(1, cb2); ofc.fillStyle = pbc;
@@ -201,7 +202,7 @@
         setInterval(function(){ if(ct > 0) { ct++; if(ct > 8 && ct % 2 == 0 && (pc_x !== 0 || pc_y !== 0)) moveCursor(pc_x, pc_y); } }, 60);
 
         window.execUndo = function() { if(undoStack.length>0){ redoStack.push(JSON.stringify(map)); map=JSON.parse(undoStack.pop()); refresh(); } };
-        window.execRedo = function() { if(redoStack.length>0){ undoStack.push(JSON.stringify(map)); map=JSON.parse(redoStack.pop()); refresh(); } };
+        window.execRedo = function() { if(undoStack.length>0){ undoStack.push(JSON.stringify(map)); map=JSON.parse(redoStack.pop()); refresh(); } };
         function save() { undoStack.push(JSON.stringify(map)); if(undoStack.length>50)undoStack.shift(); redoStack=[]; }
 
         function getPos(ex, ey) { var rect = pcs.getBoundingClientRect(); return { x: (ex - rect.left) * (pcs.width / rect.width), y: (ey - rect.top) * (pcs.height / rect.height) }; }
