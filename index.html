@@ -3,9 +3,9 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>イラストロジック - 最終修正版</title>
+    <title>イラストロジック - 操作感修正版</title>
     <style>
-        body { margin: 0; padding: 0; background: #f0f0f0; font-family: sans-serif; touch-action: pan-x pan-y; }
+        body { margin: 0; padding: 0; background: #f0f0f0; font-family: sans-serif; touch-action: none; }
         #ui-panel { 
             text-align: center; padding: 10px; background: #333; 
             position: sticky; top: 0; z-index: 10000;
@@ -65,7 +65,6 @@
         function getHintStatus(cells, hints) {
             var status = hints.map(() => ({ done: false }));
             var error = false;
-
             if (hints.length === 1 && hints[0] === 0) {
                 var hasBlack = cells.some(c => c === 1);
                 var allFixed = cells.every(c => c !== 0);
@@ -73,7 +72,6 @@
                 if (hasBlack) error = true;
                 return { status, error };
             }
-
             function scanFromEnd(cellArr, hintArr, sideStatus, isReverse) {
                 var cIdx = 0; var hIdx = 0;
                 while (cIdx < cellArr.length && hIdx < hintArr.length) {
@@ -103,7 +101,7 @@
             return { status, error };
         }
 
-        // --- 描画・操作系 ---
+        // --- 描画 ---
         function drawGrid() {
             ofc.fillStyle=c1; ofc.fillRect(0,0,of.width,of.height);
             ofc.fillStyle=cw; ofc.fillRect(fx,fy,fmx*ds,fmy*ds);
@@ -186,10 +184,14 @@
             refresh(); 
         }
 
+        // 十字キー連続移動タイマー（厳格制御）
         setInterval(function(){ 
             if(ct > 0) { 
                 ct++; 
-                if(ct > 8 && ct % 2 == 0 && (pc_x !== 0 || pc_y !== 0)) moveCursor(pc_x, pc_y); 
+                // ct=1(開始), ct>8(約0.5秒経過) かつ 2回に1回移動
+                if(ct > 8 && ct % 2 == 0) {
+                    if(pc_x !== 0 || pc_y !== 0) moveCursor(pc_x, pc_y);
+                }
             } 
         }, 60);
 
@@ -205,14 +207,28 @@
                 var p=getPos(e.touches[i].clientX, e.touches[i].clientY);
                 if(sp<2 && p.y>fy+fmy*ds){ sp=2; refresh(); return; }
                 if(sp>=2 && p.y>fy+fmy*ds){
-                    isCont=true; var lP=Math.sqrt(Math.pow(p.x-pdx,2)+Math.pow(p.y-pdy,2)); var lB=Math.sqrt(Math.pow(p.x-pbx,2)+Math.pow(p.y-pby,2));
-                    if(lP<ps*1.2){ var tan=Math.atan2(p.y-pdy, p.x-pdx); pc_x=0; pc_y=0; if(Math.abs(tan)<Math.PI/4) pc_x=1; else if(Math.abs(tan)>Math.PI*0.75) pc_x=-1; else if(tan>0) pc_y=1; else pc_y=-1; hJ=true; } else if(lB<bs*1.2) hB=true;
+                    isCont=true; 
+                    var lP=Math.sqrt(Math.pow(p.x-pdx,2)+Math.pow(p.y-pdy,2)); 
+                    var lB=Math.sqrt(Math.pow(p.x-pbx,2)+Math.pow(p.y-pby,2));
+                    if(lP<ps*1.2){ 
+                        var tan=Math.atan2(p.y-pdy, p.x-pdx); 
+                        pc_x=0; pc_y=0; 
+                        if(Math.abs(tan)<Math.PI/4) pc_x=1; else if(Math.abs(tan)>Math.PI*0.75) pc_x=-1; else if(tan>0) pc_y=1; else pc_y=-1; 
+                        hJ=true; 
+                    } else if(lB<bs*1.2) {
+                        hB=true;
+                    }
                 }
             }
             if(isCont){ 
+                // ボタンの即時反応
                 if(hB && !(pf&16)){ save(); pf|=16; map[cpx][cpy]=currentInputMode; refresh(); } 
                 if(!hB) pf&=~16; 
-                if(hJ && ct===0){ save(); ct=1; moveCursor(pc_x,pc_y); } 
+                // 十字キーの即時反応（1回だけ動かす）
+                if(hJ && ct===0){ 
+                    save(); ct=1; 
+                    moveCursor(pc_x,pc_y); 
+                } 
                 if(!hJ){ ct=0; pc_x=0; pc_y=0; } 
                 e.preventDefault(); 
             } else { 
@@ -226,13 +242,18 @@
             var onP=false, hB=false, hJ=false;
             for(var i=0; i<e.touches.length; i++){
                 var p=getPos(e.touches[i].clientX, e.touches[i].clientY);
-                if(sp>=2 && p.y>fy+fmy*ds){ onP=true; var lP=Math.sqrt(Math.pow(p.x-pdx,2)+Math.pow(p.y-pdy,2)); var lB=Math.sqrt(Math.pow(p.x-pbx,2)+Math.pow(p.y-pby,2));
+                if(sp>=2 && p.y>fy+fmy*ds){ 
+                    onP=true; 
+                    var lP=Math.sqrt(Math.pow(p.x-pdx,2)+Math.pow(p.y-pdy,2)); 
+                    var lB=Math.sqrt(Math.pow(p.x-pbx,2)+Math.pow(p.y-pby,2));
                     if(lP<ps*1.2){ 
-                        var tan=Math.atan2(p.y-pdy, p.x-pdx); var nx=0, ny=0;
+                        var tan=Math.atan2(p.y-pdy, p.x-pdx); 
+                        var nx=0, ny=0;
                         if(Math.abs(tan)<Math.PI/4) nx=1; else if(Math.abs(tan)>Math.PI*0.75) nx=-1; else if(tan>0) ny=1; else ny=-1;
+                        // 方向が変わったらリセット
                         if(nx!==pc_x || ny!==pc_y){ pc_x=nx; pc_y=ny; ct=1; moveCursor(pc_x,pc_y); }
                         hJ=true; 
-                    } else if(lB<bs*1.2) hB=true;
+                    } else if(lB<bs*1.2) hB=true; else { hJ=false; pc_x=0; pc_y=0; ct=0; }
                 }
             }
             if(onP){ 
@@ -240,14 +261,26 @@
                 if(!hB) pf&=~16; 
                 if(!hJ){ ct=0; pc_x=0; pc_y=0; } 
                 e.preventDefault(); 
-            } else if(e.touches.length===1){ 
-                var p=getPos(e.touches[0].clientX, e.touches[0].clientY); 
-                var tx=Math.floor((p.x-fx)/ds), ty=Math.floor((p.y-fy)/ds); 
-                if(tx>=0 && tx<fmx && ty>=0 && ty<fmy && (cpx!=tx || cpy!=ty)){ cpx=tx; cpy=ty; map[tx][ty]=currentInputMode; refresh(); } 
             }
         }, {passive:false});
 
-        pcs.addEventListener("touchend", function(e) { if(e.touches.length===0){ ct=0; pf&=~16; pc_x=0; pc_y=0; } });
+        pcs.addEventListener("touchend", function(e) { 
+            // すべての指が離れたら入力を完全にリセット
+            if(e.touches.length===0){ 
+                ct=0; pf&=~16; pc_x=0; pc_y=0; 
+            } else {
+                // 指が残っている場合、残っている指の座標で再判定
+                var hB=false, hJ=false;
+                for(var i=0; i<e.touches.length; i++){
+                    var p=getPos(e.touches[i].clientX, e.touches[i].clientY);
+                    var lP=Math.sqrt(Math.pow(p.x-pdx,2)+Math.pow(p.y-pdy,2));
+                    var lB=Math.sqrt(Math.pow(p.x-pbx,2)+Math.pow(p.y-pby,2));
+                    if(lP<ps*1.2) hJ=true; if(lB<bs*1.2) hB=true;
+                }
+                if(!hB) pf&=~16; if(!hJ){ ct=0; pc_x=0; pc_y=0; }
+            }
+        });
+
         pcs.addEventListener("mousedown", function(e) { if(isFinished) return; var p=getPos(e.clientX, e.clientY); if(p.y<fy+fmy*ds){ isMouseDown=true; save(); cpx=Math.floor((p.x-fx)/ds); cpy=Math.floor((p.y-fy)/ds); map[cpx][cpy]=currentInputMode; refresh(); } });
         window.addEventListener("mousemove", function(e) { if(!isMouseDown || isFinished) return; var p=getPos(e.clientX, e.clientY); var tx=Math.floor((p.x-fx)/ds), ty=Math.floor((p.y-fy)/ds); if(tx>=0 && tx<fmx && ty>=0 && ty<fmy && (cpx!=tx || cpy!=ty)){ cpx=tx; cpy=ty; map[tx][ty]=currentInputMode; refresh(); } });
         window.addEventListener("mouseup", function() { isMouseDown=false; });
