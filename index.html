@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>イラストロジック - PC・スマホ完全対応版</title>
+    <title>イラストロジック - 最終完成版</title>
     <style>
         body { margin: 0; padding: 0; background: #f0f0f0; font-family: sans-serif; touch-action: pan-x pan-y; }
         #ui-panel { 
@@ -12,16 +12,16 @@
             display: flex; justify-content: center; flex-wrap: wrap; gap: 8px;
         }
         #ui-panel button { 
-            padding: 10px 20px; font-size: 16px; cursor: pointer; 
-            border-radius: 6px; border: none; background: #eee; min-width: 80px;
+            padding: 10px 18px; font-size: 16px; cursor: pointer; 
+            border-radius: 6px; border: none; background: #eee; min-width: 70px;
         }
         #ui-panel button.active { background: #00CFFF; color: #fff; font-weight: bold; }
-        .canvas-container { width: 100%; text-align: center; background: #fff; padding-bottom: 50px; }
+        .canvas-container { width: 100%; text-align: center; background: #fff; }
         canvas { 
             max-width: 100%; height: auto; display: block; margin: 0 auto;
-            touch-action: none; background: #fff; cursor: crosshair;
+            touch-action: none; background: #fff;
         }
-        h1 { font-size: 20px; margin: 15px 0; color: #333; }
+        h1 { font-size: 18px; margin: 10px 0; color: #333; }
     </style>
 </head>
 <body>
@@ -37,13 +37,10 @@
 <div class="canvas-container">
     <h1>計算してみると......</h1>
     <canvas id="pz_canvas" width="1632" height="1812"></canvas>
-    <p style="color:#888;"><small>PC：マウスドラッグで連続塗り / スマホ：コントローラー対応</small></p>
 </div>
 
 <script type="text/javascript">
-    var undoStack = [];
-    var redoStack = [];
-    var currentInputMode = 1;
+    var undoStack = [], redoStack = [], currentInputMode = 1;
     var isMouseDown = false;
 
     function setInMode(m) {
@@ -53,10 +50,8 @@
     }
 
     function mf_start(){
-        var pcs = document.getElementById('pz_canvas');
-        var pcx = pcs.getContext('2d');
-        var of = document.createElement('canvas');
-        of.width = pcs.width; of.height = pcs.height;
+        var pcs = document.getElementById('pz_canvas'), pcx = pcs.getContext('2d');
+        var of = document.createElement('canvas'); of.width = pcs.width; of.height = pcs.height;
         var ofc = of.getContext('2d');
 
         var ds=24, fmx=50, fmy=30, fx=360, fy=216;
@@ -92,7 +87,7 @@
             ofc.strokeStyle=cl;
             for(var i=0;i<=fmx;i++){ ofc.lineWidth=(i%5==0)?2:1; ofc.strokeStyle=(i%5==0)?cm:cl; ofc.beginPath(); ofc.moveTo(fx+i*ds,fy); ofc.lineTo(fx+i*ds,fy+fmy*ds); ofc.stroke(); }
             for(var j=0;j<=fmy;j++){ ofc.lineWidth=(j%5==0)?2:1; ofc.strokeStyle=(j%5==0)?cm:cl; ofc.beginPath(); ofc.moveTo(fx,fy+j*ds); ofc.lineTo(fx+fmx*ds,fy+j*ds); ofc.stroke(); }
-            if(sp>=2) tud(); else { ofc.fillStyle="#666"; ofc.font="36px sans-serif"; ofc.fillText("ここをタップしてコントローラーを表示", pcs.width/2, fy+fmy*ds+150); }
+            if(sp>=2) tud(); else { ofc.fillStyle="#666"; ofc.font="32px sans-serif"; ofc.fillText("ここをタップしてコントローラーを表示", pcs.width/2, fy+fmy*ds+150); }
         }
 
         function refresh() {
@@ -132,48 +127,67 @@
         window.execRedo = function() { if(redoStack.length>0){ undoStack.push(JSON.stringify(map)); map=JSON.parse(redoStack.pop()); refresh(); } };
         function save() { undoStack.push(JSON.stringify(map)); if(undoStack.length>50)undoStack.shift(); redoStack=[]; }
 
-        // 統合入力処理
-        function processInput(x, y, isStart, isMove, isEnd) {
+        // --- 入力制御ロジック ---
+        function getCanvasPos(ex, ey) {
             var rect = pcs.getBoundingClientRect();
-            var mx = (x - rect.left) * (pcs.width / rect.width);
-            var my = (y - rect.top) * (pcs.height / rect.height);
-
-            if(isStart && my > fy + fmy*ds && sp < 2) { sp=2; refresh(); return; }
-
-            if(sp >= 2 && my > fy + fmy*ds) {
-                // コントローラーエリア
-                var lenP = Math.sqrt(Math.pow(mx-pdx,2)+Math.pow(my-pdy,2));
-                var lenB = Math.sqrt(Math.pow(mx-pbx,2)+Math.pow(my-pby,2));
-                if(isStart || isMove) {
-                    if(lenP < ps*1.2) {
-                        var tan = Math.atan2(my-pdy, mx-pdx);
-                        pc_x=0; pc_y=0;
-                        if(Math.abs(tan)<Math.PI/4) pc_x=1; else if(Math.abs(tan)>Math.PI*0.75) pc_x=-1; else if(tan>0) pc_y=1; else pc_y=-1;
-                        if(ct==0) { save(); ct=1; moveCursor(pc_x, pc_y); }
-                    } else if(lenB < bs*1.2) {
-                        if(!(pf & 16)) { save(); pf |= 16; paintCell(); }
-                    }
-                }
-            } else {
-                // 盤面エリア
-                var tx = Math.floor((mx-fx)/ds), ty = Math.floor((my-fy)/ds);
-                if(tx>=0 && tx<fmx && ty>=0 && ty<fmy) {
-                    if(isStart) { save(); cpx=tx; cpy=ty; map[tx][ty]=currentInputMode; refresh(); }
-                    else if(isMove && (cpx!=tx || cpy!=ty)) { cpx=tx; cpy=ty; map[tx][ty]=currentInputMode; refresh(); }
-                }
-            }
-            if(isEnd) { ct=0; pf &= ~16; pc_x=0; pc_y=0; }
+            return {
+                x: (ex - rect.left) * (pcs.width / rect.width),
+                y: (ey - rect.top) * (pcs.height / rect.height)
+            };
         }
 
-        // マウスイベント
-        pcs.addEventListener("mousedown", (e) => { isMouseDown=true; processInput(e.clientX, e.clientY, true, false, false); });
-        window.addEventListener("mousemove", (e) => { if(isMouseDown) processInput(e.clientX, e.clientY, false, true, false); });
-        window.addEventListener("mouseup", () => { isMouseDown=false; processInput(0,0,false,false,true); });
+        function handlePad(touches) {
+            var hasJoy = false, hasBtn = false;
+            for(var i=0; i<touches.length; i++) {
+                var p = getCanvasPos(touches[i].clientX, touches[i].clientY);
+                if(sp < 2 && p.y > fy + fmy*ds) { sp=2; refresh(); return; }
+                
+                var lenP = Math.sqrt(Math.pow(p.x-pdx,2)+Math.pow(p.y-pdy,2));
+                var lenB = Math.sqrt(Math.pow(p.x-pbx,2)+Math.pow(p.y-pby,2));
+                
+                if(lenP < ps*1.2) {
+                    var tan = Math.atan2(p.y-pdy, p.x-pdx);
+                    pc_x=0; pc_y=0;
+                    if(Math.abs(tan)<Math.PI/4) pc_x=1; else if(Math.abs(tan)>Math.PI*0.75) pc_x=-1; else if(tan>0) pc_y=1; else pc_y=-1;
+                    hasJoy = true;
+                } else if(lenB < bs*1.2) { hasBtn = true; }
+            }
+            if(hasBtn && !(pf & 16)) { save(); pf |= 16; paintCell(); }
+            if(!hasBtn) pf &= ~16;
+            if(hasJoy && ct === 0) { save(); ct = 1; moveCursor(pc_x, pc_y); }
+            if(!hasJoy) { ct = 0; pc_x = 0; pc_y = 0; }
+        }
 
-        // タッチイベント
-        pcs.addEventListener("touchstart", (e) => { processInput(e.touches[0].clientX, e.touches[0].clientY, true, false, false); e.preventDefault(); }, {passive:false});
-        pcs.addEventListener("touchmove", (e) => { processInput(e.touches[0].clientX, e.touches[0].clientY, false, true, false); e.preventDefault(); }, {passive:false});
-        pcs.addEventListener("touchend", (e) => { processInput(0,0,false,false,true); e.preventDefault(); }, {passive:false});
+        // マウス用
+        pcs.addEventListener("mousedown", (e) => {
+            var p = getCanvasPos(e.clientX, e.clientY);
+            if(p.y < fy + fmy*ds) { isMouseDown=true; save(); cpx=Math.floor((p.x-fx)/ds); cpy=Math.floor((p.y-fy)/ds); map[cpx][cpy]=currentInputMode; refresh(); }
+        });
+        window.addEventListener("mousemove", (e) => {
+            if(!isMouseDown) return;
+            var p = getCanvasPos(e.clientX, e.clientY);
+            var tx=Math.floor((p.x-fx)/ds), ty=Math.floor((p.y-fy)/ds);
+            if(tx>=0 && tx<fmx && ty>=0 && ty<fmy && (cpx!=tx || cpy!=ty)) { cpx=tx; cpy=ty; map[tx][ty]=currentInputMode; refresh(); }
+        });
+        window.addEventListener("mouseup", () => { isMouseDown=false; });
+
+        // スマホ用（マルチタッチ完全分離）
+        pcs.addEventListener("touchstart", (e) => {
+            var p = getCanvasPos(e.touches[0].clientX, e.touches[0].clientY);
+            if(p.y > fy + fmy*ds || sp >= 2) { handlePad(e.touches); } 
+            else { save(); cpx=Math.floor((p.x-fx)/ds); cpy=Math.floor((p.y-fy)/ds); map[cpx][cpy]=currentInputMode; refresh(); }
+            e.preventDefault();
+        }, {passive:false});
+        pcs.addEventListener("touchmove", (e) => {
+            var p = getCanvasPos(e.touches[0].clientX, e.touches[0].clientY);
+            if(p.y > fy + fmy*ds) { handlePad(e.touches); } 
+            else if(e.touches.length === 1) {
+                var tx=Math.floor((p.x-fx)/ds), ty=Math.floor((p.y-fy)/ds);
+                if(tx>=0 && tx<fmx && ty>=0 && ty<fmy && (cpx!=tx || cpy!=ty)) { cpx=tx; cpy=ty; map[tx][ty]=currentInputMode; refresh(); }
+            }
+            e.preventDefault();
+        }, {passive:false});
+        pcs.addEventListener("touchend", (e) => { handlePad(e.touches); });
 
         refresh();
     }
