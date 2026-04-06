@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>イラストロジック - 確定判定修正版</title>
+    <title>イラストロジック - 完璧判定版</title>
     <style>
         body { margin: 0; padding: 0; background: #f0f0f0; font-family: sans-serif; touch-action: pan-x pan-y; }
         #ui-panel { 
@@ -31,7 +31,7 @@
 </div>
 
 <div class="canvas-container">
-    <h1 id="title_msg">計算してみると......</h1>
+    <h1 id="title_msg">お絵かきロジック</h1>
     <canvas id="pz_canvas" width="1632" height="1812"></canvas>
 </div>
 
@@ -39,6 +39,7 @@
     var undoStack = [], redoStack = [], currentInputMode = 1;
     var isMouseDown = false, isFinished = false;
 
+    // ヒントデータ
     var ln=[[0],[2,2,2,1],[1,1,1,2],[1,1,1,4],[2,2,2,1],[0],[3,2,2,2,2,2],[5,4,4,3,3,3],[1,2,1,2,1,2,4,3,3],[2,2,2,1,2,1,2,1,2],[2,2,2,2,2,1,2,1,2],[2,4,1,1,4,1,2,4,1,2,1,2],[2,2,2,2,2,1,2,1,2],[2,2,2,7,12],[5,4,4,2,2,2],[5,4,4,2,2,2],[0],[50],[0],[3,2,2,2,2,2],[5,4,4,3,3,3],[1,2,1,2,1,2,4,3,3],[2,2,2,1,1,2,1,2,1,2],[2,2,2,2,1,2,2,2,1,2,1,2],[2,2,1,1,5,1,2,2,1,2,1,2],[2,2,2,1,2,2,1,2,1,2],[2,2,2,1,7,12],[5,4,4,2,2,2],[5,4,4,2,2,2],[0]];
     var tn=[[2,3,1,2,3],[2,4,1,2,4],[2,2,2,1,2,2,2],[6,2,1,6,2],[1,2,4,2,1,4,2],[2,1,1],[1,1],[1,2,1,1,2],[2,1,1,1,2],[1,1],[1],[2,3,1,2,3],[2,4,1,2,4],[7,2,1,7,2],[4,2,1,4,2],[1],[2,3,1,2,3],[2,4,1,2,4],[7,2,1,7,2],[1,2,4,2,1,4,2],[2,1,1,1],[1,1,1],[1,1,5],[1,1,1],[1,1,1],[1],[2,1,2],[4,1,4],[3,1,1,3,1],[2,1,1,2,1],[10,1,10],[10,1,10],[1,1,1],[1,1],[1,1,2],[1,1,2],[1,1],[1],[3,1,3],[2,1,1,2,1],[2,1,1,2,1],[10,1,10],[10,1,10],[1,1,1],[3,1,3],[2,1,1,2,1],[1,2,1,1,2,1],[2,10,1,10],[4,10,1,10],[1,1,1,1]];
     
@@ -60,55 +61,66 @@
         var ps=326, pdx=ps+24, pdy=fy+fmy*ds+204+ps, bs=272, pbx=pcs.width-bs-24, pby=pdy;
         var cpx=0, cpy=0, sp=0, pf=0, ct=0, pc_x=0, pc_y=0;
 
-        // --- 修正版ロジック ---
-        function checkHintStatus(cells, hints) {
+        // --- 修正版ロジックコア ---
+        function getHintStatus(cells, hints) {
             var status = hints.map(() => ({ done: false }));
             var error = false;
 
-            // 1. 赤字判定（明らかにダメな時だけ）
-            var blackSum = 0;
-            var maxContinuous = 0;
-            var curCont = 0;
-            for(var v of cells) {
-                if(v === 1) { 
-                    blackSum++; curCont++; 
-                    if(curCont > Math.max(...hints)) error = true; 
-                } else {
-                    curCont = 0;
-                }
+            // 0の特殊判定：すべて☒なら確定
+            if (hints.length === 1 && hints[0] === 0) {
+                var allX = cells.every(c => c === 2);
+                var noBlack = cells.every(c => c !== 1);
+                if (allX) status[0].done = true;
+                if (!noBlack) error = true;
+                return { status, error };
             }
-            if(blackSum > hints.reduce((a,b)=>a+b, 0)) error = true;
 
-            // 2. 端からの確定グレーアウト判定
-            // 「端から■か☒で隙間なく埋まっている」間だけヒントを消化する
-            if(hints[0] !== 0) {
+            // 1. エラー判定（塊ごとの整合性）
+            var currentBlocks = [];
+            var bLen = 0;
+            for(var v of cells) {
+                if(v === 1) bLen++;
+                else { if(bLen > 0) currentBlocks.push(bLen); bLen = 0; }
+            }
+            if(bLen > 0) currentBlocks.push(bLen);
+            if(currentBlocks.length > hints.length) error = true;
+
+            // 2. 端からの厳格スキャン（左/上から）
+            function scan(cellArr, hintArr, statArr, isReverse) {
                 var hIdx = 0;
-                var i = 0;
-                while (i < cells.length && hIdx < hints.length) {
-                    if (cells[i] === 0) break; // 空白（未確定）にぶつかったらスキャン終了
+                var cIdx = 0;
+                while (cIdx < cellArr.length && hIdx < hintArr.length) {
+                    if (cellArr[cIdx] === 0) break; // 未確定があればそこから先はスキャンしない
+                    if (cellArr[cIdx] === 2) { cIdx++; continue; } // バツは飛ばす
                     
-                    if (cells[i] === 2) {
-                        i++; // バツは読み飛ばす
-                        continue;
-                    }
-                    
-                    if (cells[i] === 1) {
-                        // 黒マスの塊を計測
-                        var start = i;
-                        while (i < cells.length && cells[i] === 1) i++;
-                        var len = i - start;
+                    if (cellArr[cIdx] === 1) {
+                        var start = cIdx;
+                        while (cIdx < cellArr.length && cellArr[cIdx] === 1) cIdx++;
+                        var len = cIdx - start;
                         
-                        // 今の塊が現在のヒント数字と一致し、かつ直後が「端」か「バツ」なら確定
-                        if (len === hints[hIdx] && (i === cells.length || cells[i] === 2)) {
-                            status[hIdx].done = true;
-                            hIdx++;
+                        var targetHIdx = isReverse ? (hintArr.length - 1 - hIdx) : hIdx;
+                        
+                        if (len === hintArr[hIdx]) {
+                            // ヒント通り。かつ「直後が端」か「直後がバツ」なら確定
+                            if (cIdx === cellArr.length || cellArr[cIdx] === 2) {
+                                statArr[targetHIdx].done = true;
+                                hIdx++;
+                            } else {
+                                // 黒マスの直後が未確定なら、まだ伸びる可能性があるので確定させない
+                                break; 
+                            }
                         } else {
-                            // 一致しない、または直後が未確定ならこれ以降のスキャンは中止
+                            // ヒントと数が合わない塊が確定圏内にあればエラー
+                            error = true;
                             break;
                         }
                     }
                 }
             }
+
+            scan(cells, hints, status, false); // 左/上から
+            scan([...cells].reverse(), [...hints].reverse(), status, true); // 右/下から
+
             return { status, error };
         }
 
@@ -117,30 +129,33 @@
             ofc.fillStyle=cw; ofc.fillRect(fx,fy,fmx*ds,fmy*ds);
             ofc.font=(ds*0.75)+"px Arial"; ofc.textAlign="center";
 
+            // 列の描画
             for(var i=0; i<fmx; i++) {
                 var col = []; for(var y=0; y<fmy; y++) col.push(map[i][y]);
-                var res = checkHintStatus(col, tn[i]);
+                var res = getHintStatus(col, tn[i]);
                 for(var j=0; j<tn[i].length; j++) {
                     ofc.fillStyle = res.error ? "#FF0000" : (res.status[j].done ? "#CCCCCC" : "#000000");
                     ofc.fillText(tn[i][j], fx+i*ds+ds/2, fy-(tn[i].length-j-1)*ds-4);
                 }
             }
+            // 行の描画
             for(var i=0; i<fmy; i++) {
                 var row = map.map(r => r[i]);
-                var res = checkHintStatus(row, ln[i]);
+                var res = getHintStatus(row, ln[i]);
                 for(var j=0; j<ln[i].length; j++) {
                     ofc.fillStyle = res.error ? "#FF0000" : (res.status[j].done ? "#CCCCCC" : "#000000");
                     ofc.fillText(ln[i][j], fx-(ln[i].length-j)*ds+ds/2, fy+(i+1)*ds-4);
                 }
             }
-            // ... (以下、枠線描画などは前回のコードと同じ)
+
+            // 枠線描画
             ofc.strokeStyle=cl;
             for(var i=0;i<=fmx;i++){ ofc.lineWidth=(i%5==0)?2:1; ofc.strokeStyle=(i%5==0)?cm:cl; ofc.beginPath(); ofc.moveTo(fx+i*ds,fy); ofc.lineTo(fx+i*ds,fy+fmy*ds); ofc.stroke(); }
             for(var j=0;j<=fmy;j++){ ofc.lineWidth=(j%5==0)?2:1; ofc.strokeStyle=(j%5==0)?cm:cl; ofc.beginPath(); ofc.moveTo(fx,fy+j*ds); ofc.lineTo(fx+fmx*ds,fy+j*ds); ofc.stroke(); }
-            if(sp>=2) tud(); else { ofc.fillStyle="#666"; ofc.font="32px sans-serif"; ofc.fillText("ここをタップしてコントローラーを表示", pcs.width/2, fy+fmy*ds+150); }
+            if(sp<2) { ofc.fillStyle="#666"; ofc.font="32px sans-serif"; ofc.fillText("タップしてコントローラーを表示", pcs.width/2, fy+fmy*ds+150); } else tud();
         }
 
-        // --- 操作系 ---
+        // --- 共通処理（操作・描画） ---
         function tud(){
             ofc.beginPath(); var pbc = ofc.createLinearGradient(pdx, pdy-ps, pdx, pdy+ps);
             pbc.addColorStop(0, cb1); pbc.addColorStop(1, cb2); ofc.fillStyle = pbc;
@@ -172,116 +187,63 @@
 
         function checkAllClear() {
             for(var i=0; i<fmx; i++) {
-                var col = []; for(var y=0; y<fmy; y++) col.push(map[i][y]);
-                var s = []; var c=0; for(var v of col){ if(v==1)c++; else if(c>0){s.push(c);c=0;} } if(c>0)s.push(c); if(s.length==0)s=[0];
-                if(s.join(',') !== tn[i].join(',')) return;
+                var col=[]; for(var y=0;y<fmy;y++) col.push(map[i][y]);
+                var s=[]; var c=0; for(var v of col){if(v==1)c++; else if(c>0){s.push(c);c=0;}} if(c>0)s.push(c); if(s.length==0)s=[0];
+                if(s.join(',')!==tn[i].join(',')) return;
             }
             for(var i=0; i<fmy; i++) {
-                var row = map.map(r=>r[i]);
-                var s = []; var c=0; for(var v of row){ if(v==1)c++; else if(c>0){s.push(c);c=0;} } if(c>0)s.push(c); if(s.length==0)s=[0];
-                if(s.join(',') !== ln[i].join(',')) return;
+                var row=map.map(r=>r[i]);
+                var s=[]; var c=0; for(var v of row){if(v==1)c++; else if(c>0){s.push(c);c=0;}} if(c>0)s.push(c); if(s.length==0)s=[0];
+                if(s.join(',')!==ln[i].join(',')) return;
             }
-            isFinished = true;
-            document.getElementById('title_msg').innerText = "正解です！おめでとう！";
+            isFinished=true; document.getElementById('title_msg').innerText="正解です！おめでとう！";
             ofc.fillStyle=c1; ofc.fillRect(0,0,of.width,of.height);
-            var zx = (of.width-fmx*ds)/2, zy = (of.height-fmy*ds)/2;
+            var zx=(of.width-fmx*ds)/2, zy=(of.height-fmy*ds)/2;
             for(var x=0;x<fmx;x++) for(var y=0;y<fmy;y++) if(map[x][y]==1){ ofc.fillStyle=cf; ofc.fillRect(zx+x*ds,zy+y*ds,ds,ds); }
             update();
         }
 
-        function update() {
-            pcx.drawImage(of,0,0);
-            if(!isFinished){
-                pcx.fillStyle=cc; pcx.fillRect(fx+cpx*ds,fy,ds,fmy*ds); pcx.fillRect(fx,fy+cpy*ds,fmx*ds,ds);
-                pcx.strokeStyle=ccC; pcx.lineWidth=2; pcx.strokeRect(fx+cpx*ds,fy+cpy*ds,ds,ds);
-            }
-        }
-
+        function update() { pcx.drawImage(of,0,0); if(!isFinished){ pcx.fillStyle=cc; pcx.fillRect(fx+cpx*ds,fy,ds,fmy*ds); pcx.fillRect(fx,fy+cpy*ds,fmx*ds,ds); pcx.strokeStyle=ccC; pcx.lineWidth=2; pcx.strokeRect(fx+cpx*ds,fy+cpy*ds,ds,ds); } }
         function moveCursor(dx, dy) { if(isFinished) return; cpx+=dx; cpy+=dy; cpx=Math.max(0,Math.min(fmx-1,cpx)); cpy=Math.max(0,Math.min(fmy-1,cpy)); if(pf&16) paintCell(); refresh(); }
         function paintCell() { if(map[cpx][cpy] == currentInputMode) return; map[cpx][cpy] = currentInputMode; refresh(); }
         setInterval(function(){ if(ct > 0) { ct++; if(ct > 8 && ct % 2 == 0 && (pc_x !== 0 || pc_y !== 0)) moveCursor(pc_x, pc_y); } }, 60);
 
         window.execUndo = function() { if(undoStack.length>0){ redoStack.push(JSON.stringify(map)); map=JSON.parse(undoStack.pop()); refresh(); } };
-        window.execRedo = function() { if(undoStack.length>0){ undoStack.push(JSON.stringify(map)); map=JSON.parse(redoStack.pop()); refresh(); } };
+        window.execRedo = function() { if(redoStack.length>0){ undoStack.push(JSON.stringify(map)); map=JSON.parse(redoStack.pop()); refresh(); } };
         function save() { undoStack.push(JSON.stringify(map)); if(undoStack.length>50)undoStack.shift(); redoStack=[]; }
-
-        function getPos(ex, ey) { var rect = pcs.getBoundingClientRect(); return { x: (ex - rect.left) * (pcs.width / rect.width), y: (ey - rect.top) * (pcs.height / rect.height) }; }
+        function getPos(ex, ey) { var rect = pcs.getBoundingClientRect(); return { x: (ex-rect.left)*(pcs.width/rect.width), y: (ey-rect.top)*(pcs.height/rect.height) }; }
 
         pcs.addEventListener("touchstart", function(e) {
             if(isFinished) return;
-            var isControlling = false, hasBtn = false, hasJoy = false;
+            var isCont=false, hB=false, hJ=false;
             for(var i=0; i<e.touches.length; i++){
-                var p = getPos(e.touches[i].clientX, e.touches[i].clientY);
-                if(sp < 2 && p.y > fy + fmy*ds) { sp=2; refresh(); return; }
-                if(sp >= 2 && p.y > fy + fmy*ds) {
-                    isControlling = true;
-                    var lenP = Math.sqrt(Math.pow(p.x-pdx,2)+Math.pow(p.y-pdy,2));
-                    var lenB = Math.sqrt(Math.pow(p.x-pbx,2)+Math.pow(p.y-pby,2));
-                    if(lenP < ps*1.2) {
-                        var tan = Math.atan2(p.y-pdy, p.x-pdx);
-                        pc_x=0; pc_y=0;
-                        if(Math.abs(tan)<Math.PI/4) pc_x=1; else if(Math.abs(tan)>Math.PI*0.75) pc_x=-1; else if(tan>0) pc_y=1; else pc_y=-1;
-                        hasJoy = true;
-                    } else if(lenB < bs*1.2) { hasBtn = true; }
+                var p=getPos(e.touches[i].clientX, e.touches[i].clientY);
+                if(sp<2 && p.y>fy+fmy*ds){ sp=2; refresh(); return; }
+                if(sp>=2 && p.y>fy+fmy*ds){
+                    isCont=true; var lP=Math.sqrt(Math.pow(p.x-pdx,2)+Math.pow(p.y-pdy,2)); var lB=Math.sqrt(Math.pow(p.x-pbx,2)+Math.pow(p.y-pby,2));
+                    if(lP<ps*1.2){ var tan=Math.atan2(p.y-pdy, p.x-pdx); pc_x=0; pc_y=0; if(Math.abs(tan)<Math.PI/4) pc_x=1; else if(Math.abs(tan)>Math.PI*0.75) pc_x=-1; else if(tan>0) pc_y=1; else pc_y=-1; hJ=true; } else if(lB<bs*1.2) hB=true;
                 }
             }
-            if(isControlling) {
-                if(hasBtn && !(pf & 16)) { save(); pf |= 16; paintCell(); }
-                if(!hasBtn) pf &= ~16;
-                if(hasJoy && ct === 0) { save(); ct = 1; moveCursor(pc_x, pc_y); }
-                if(!hasJoy) { ct = 0; pc_x = 0; pc_y = 0; }
-                e.preventDefault();
-            } else {
-                var p = getPos(e.touches[0].clientX, e.touches[0].clientY);
-                if(p.x >= fx && p.x < fx+fmx*ds && p.y >= fy && p.y < fy+fmy*ds) {
-                    save(); cpx=Math.floor((p.x-fx)/ds); cpy=Math.floor((p.y-fy)/ds); map[cpx][cpy]=currentInputMode; refresh();
-                }
-            }
+            if(isCont){ if(hB && !(pf&16)){ save(); pf|=16; paintCell(); } if(!hB) pf&=~16; if(hJ && ct===0){ save(); ct=1; moveCursor(pc_x,pc_y); } if(!hJ){ ct=0; pc_x=0; pc_y=0; } e.preventDefault(); }
+            else { var p=getPos(e.touches[0].clientX, e.touches[0].clientY); if(p.x>=fx && p.x<fx+fmx*ds && p.y>=fy && p.y<fy+fmy*ds){ save(); cpx=Math.floor((p.x-fx)/ds); cpy=Math.floor((p.y-fy)/ds); map[cpx][cpy]=currentInputMode; refresh(); } }
         }, {passive:false});
 
         pcs.addEventListener("touchmove", function(e) {
             if(isFinished) return;
-            var onPad = false, hasBtn = false, hasJoy = false;
+            var onP=false, hB=false, hJ=false;
             for(var i=0; i<e.touches.length; i++){
-                var p = getPos(e.touches[i].clientX, e.touches[i].clientY);
-                if(sp >= 2 && p.y > fy + fmy*ds) {
-                    onPad = true;
-                    var lenP = Math.sqrt(Math.pow(p.x-pdx,2)+Math.pow(p.y-pdy,2));
-                    var lenB = Math.sqrt(Math.pow(p.x-pbx,2)+Math.pow(p.y-pby,2));
-                    if(lenP < ps*1.2) {
-                        var tan = Math.atan2(p.y-pdy, p.x-pdx);
-                        pc_x=0; pc_y=0;
-                        if(Math.abs(tan)<Math.PI/4) pc_x=1; else if(Math.abs(tan)>Math.PI*0.75) pc_x=-1; else if(tan>0) pc_y=1; else pc_y=-1;
-                        hasJoy = true;
-                    } else if(lenB < bs*1.2) { hasBtn = true; }
+                var p=getPos(e.touches[i].clientX, e.touches[i].clientY);
+                if(sp>=2 && p.y>fy+fmy*ds){ onP=true; var lP=Math.sqrt(Math.pow(p.x-pdx,2)+Math.pow(p.y-pdy,2)); var lB=Math.sqrt(Math.pow(p.x-pbx,2)+Math.pow(p.y-pby,2));
+                    if(lP<ps*1.2){ var tan=Math.atan2(p.y-pdy, p.x-pdx); pc_x=0; pc_y=0; if(Math.abs(tan)<Math.PI/4) pc_x=1; else if(Math.abs(tan)>Math.PI*0.75) pc_x=-1; else if(tan>0) pc_y=1; else pc_y=-1; hJ=true; } else if(lB<bs*1.2) hB=true;
                 }
             }
-            if(onPad) {
-                if(hasBtn && !(pf & 16)) { save(); pf |= 16; paintCell(); }
-                if(!hasBtn) pf &= ~16;
-                if(hasJoy && ct === 0) { save(); ct = 1; moveCursor(pc_x, pc_y); }
-                if(!hasJoy) { ct = 0; pc_x = 0; pc_y = 0; }
-                e.preventDefault();
-            } else if(e.touches.length === 1) {
-                var p = getPos(e.touches[0].clientX, e.touches[0].clientY);
-                var tx=Math.floor((p.x-fx)/ds), ty=Math.floor((p.y-fy)/ds);
-                if(tx>=0 && tx<fmx && ty>=0 && ty<fmy && (cpx!=tx || cpy!=ty)) { cpx=tx; cpy=ty; map[tx][ty]=currentInputMode; refresh(); }
-            }
+            if(onP){ if(hB && !(pf&16)){ save(); pf|=16; paintCell(); } if(!hB) pf&=~16; if(hJ && ct===0){ save(); ct=1; moveCursor(pc_x,pc_y); } if(!hJ){ ct=0; pc_x=0; pc_y=0; } e.preventDefault(); }
+            else if(e.touches.length===1){ var p=getPos(e.touches[0].clientX, e.touches[0].clientY); var tx=Math.floor((p.x-fx)/ds), ty=Math.floor((p.y-fy)/ds); if(tx>=0 && tx<fmx && ty>=0 && ty<fmy && (cpx!=tx || cpy!=ty)){ cpx=tx; cpy=ty; map[tx][ty]=currentInputMode; refresh(); } }
         }, {passive:false});
 
-        pcs.addEventListener("touchend", function(e) { if(e.touches.length === 0) { ct = 0; pf &= ~16; pc_x = 0; pc_y = 0; } });
-
-        pcs.addEventListener("mousedown", function(e) {
-            if(isFinished) return;
-            var p = getPos(e.clientX, e.clientY);
-            if(p.y < fy + fmy*ds) { isMouseDown=true; save(); cpx=Math.floor((p.x-fx)/ds); cpy=Math.floor((p.y-fy)/ds); map[cpx][cpy]=currentInputMode; refresh(); }
-        });
-        window.addEventListener("mousemove", function(e) {
-            if(!isMouseDown || isFinished) return;
-            var p = getPos(e.clientX, e.clientY);
-            var tx=Math.floor((p.x-fx)/ds), ty=Math.floor((p.y-fy)/ds);
-            if(tx>=0 && tx<fmx && ty>=0 && ty<fmy && (cpx!=tx || cpy!=ty)) { cpx=tx; cpy=ty; map[tx][ty]=currentInputMode; refresh(); }
-        });
+        pcs.addEventListener("touchend", function(e) { if(e.touches.length===0){ ct=0; pf&=~16; pc_x=0; pc_y=0; } });
+        pcs.addEventListener("mousedown", function(e) { if(isFinished) return; var p=getPos(e.clientX, e.clientY); if(p.y<fy+fmy*ds){ isMouseDown=true; save(); cpx=Math.floor((p.x-fx)/ds); cpy=Math.floor((p.y-fy)/ds); map[cpx][cpy]=currentInputMode; refresh(); } });
+        window.addEventListener("mousemove", function(e) { if(!isMouseDown || isFinished) return; var p=getPos(e.clientX, e.clientY); var tx=Math.floor((p.x-fx)/ds), ty=Math.floor((p.y-fy)/ds); if(tx>=0 && tx<fmx && ty>=0 && ty<fmy && (cpx!=tx || cpy!=ty)){ cpx=tx; cpy=ty; map[tx][ty]=currentInputMode; refresh(); } });
         window.addEventListener("mouseup", function() { isMouseDown=false; });
 
         refresh();
