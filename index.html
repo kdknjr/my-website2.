@@ -2,93 +2,50 @@
 <html lang="ja">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=1642">
-    <title>イラストロジック - 完全版</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>イラストロジック - 決定版</title>
     <style>
-        body { font-family: sans-serif; background: #f0f0f0; }
-        .container { width: 100%; text-align: center; user-select: none; padding-top: 20px; }
-        .controls { margin-bottom: 15px; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
-        button {
-            padding: 12px 24px; font-size: 16px; cursor: pointer;
-            border: 2px solid #333; background: #fff; border-radius: 8px;
-            transition: all 0.2s;
-        }
-        button:active { transform: translateY(2px); }
-        button.active { background: #00CFFF; color: #fff; border-color: #008eb6; font-weight: bold; }
-        button.tool { background: #e0e0e0; }
-        button.danger { color: #CC2222; border-color: #CC2222; }
-        canvas { background: #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        body { font-family: sans-serif; background: #f4f4f9; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
+        .controls { margin-bottom: 15px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; position: sticky; top: 10px; z-index: 10; }
+        button { padding: 10px 18px; font-size: 14px; cursor: pointer; border: 2px solid #333; background: #fff; border-radius: 6px; }
+        button.active { background: #00CFFF; color: #fff; border-color: #0096ba; font-weight: bold; }
+        button.tool { background: #eee; }
+        button.danger { color: #d32f2f; border-color: #d32f2f; }
+        .canvas-wrapper { overflow: auto; max-width: 100%; border: 1px solid #ccc; background: #fff; }
+        canvas { display: block; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>計算してみると......</h1>
 
-        <div class="controls">
-            <button id="btn_mode1" class="active" onclick="setMode(1)">■ 塗る</button>
-            <button id="btn_mode2" onclick="setMode(2)">× バツ</button>
-            <button id="btn_mode0" onclick="setMode(0)">□ 消す</button>
-        </div>
+    <h1>計算してみると......</h1>
 
-        <div class="controls">
-            <button class="tool" onclick="undo()">← 戻る (Undo)</button>
-            <button class="tool" onclick="redo()">進む (Redo) →</button>
-            <button class="danger" onclick="resetGame()">全部消す</button>
-        </div>
+    <div class="controls">
+        <button id="btn_mode1" class="active" onclick="setMode(1)">■ 塗る</button>
+        <button id="btn_mode2" onclick="setMode(2)">× バツ</button>
+        <button id="btn_mode0" onclick="setMode(0)">□ 消す</button>
+        <button class="tool" onclick="undo()">← 戻る</button>
+        <button class="tool" onclick="redo()">進む →</button>
+        <button class="danger" onclick="resetGame()">全消去</button>
+    </div>
 
-        <canvas id="pz_Q4v30a" width="1632" height="1812"></canvas>
-        <div style="margin-top:10px;"><small>操作：モードを選んでマスをクリックしてください</small></div>
+    <div class="canvas-wrapper">
+        <canvas id="mainCanvas"></canvas>
     </div>
 
     <script type="text/javascript">
-        var currentMode = 1;
-        var undoStack = [];
-        var redoStack = [];
+        // --- 設定とデータ ---
+        const ds = 24; // 1マスのサイズ
+        const fmx = 50; // 横マス数
+        const fmy = 30; // 縦マス数
+        const lnm = 12; // 左ヒント最大数
+        const tnm = 10; // 上ヒント最大数
+        const fx = lnm * ds; 
+        const fy = tnm * ds;
 
-        function setMode(m) {
-            currentMode = m;
-            document.querySelectorAll('.controls button').forEach(b => b.classList.remove('active'));
-            document.getElementById('btn_mode' + m).classList.add('active');
-        }
-
-        function mf_7ro5sw(){
-            var pcs = document.getElementById('pz_Q4v30a');
-            var pcx = pcs.getContext('2d');
-            var of = document.createElement('canvas');
-            of.width = pcs.width; of.height = pcs.height;
-            var ofc = of.getContext('2d');
-
-            // --- 基本データ ---
-            var ds=24, fmx=50, fmy=30, fx=360, fy=216;
-            var cf="#000000", cw="#FFFFFF", cl="#AAAAAA", cm="#CC2222", cfb="rgba(255,255,255,0.50)";
-            var lnm=12, tnm=7;
-            var ln=[[0],[2,2,2,1],[1,1,1,2],[1,1,1,4],[2,2,2,1],[0],[3,2,2,2,2,2],[5,4,4,3,3,3],[1,2,1,2,1,2,4,3,3],[2,2,2,1,2,1,2,1,2],[2,2,2,2,2,1,2,1,2],[2,4,1,1,4,1,2,4,1,2,1,2],[2,2,2,2,2,1,2,1,2],[2,2,2,7,12],[5,4,4,2,2,2],[5,4,4,2,2,2],[0],[50],[0],[3,2,2,2,2,2],[5,4,4,3,3,3],[1,2,1,2,1,2,4,3,3],[2,2,2,1,1,2,1,2,1,2],[2,2,2,2,1,2,2,2,1,2,1,2],[2,2,1,1,5,1,2,2,1,2,1,2],[2,2,2,1,2,2,1,2,1,2],[2,2,2,1,7,12],[5,4,4,2,2,2],[5,4,4,2,2,2],[0]];
-            var tn=[[2,3,1,2,3],[2,4,1,2,4],[2,2,2,1,2,2,2],[6,2,1,6,2],[1,2,4,2,1,4,2],[2,1,1],[1,1],[1,2,1,1,2],[2,1,1,1,2],[1,1],[1],[2,3,1,2,3],[2,4,1,2,4],[7,2,1,7,2],[4,2,1,4,2],[1],[2,3,1,2,3],[2,4,1,2,4],[7,2,1,7,2],[1,2,4,2,1,4,2],[2,1,1,1],[1,1,1],[1,1,5],[1,1,1],[1,1,1],[1],[2,1,2],[4,1,4],[3,1,1,3,1],[2,1,1,2,1],[10,1,10],[10,1,10],[1,1,1],[1,1],[1,1,2],[1,1,2],[1,1],[1],[3,1,3],[2,1,1,2,1],[2,1,1,2,1],[10,1,10],[10,1,10],[1,1,1],[3,1,3],[2,1,1,2,1],[1,2,1,1,2,1],[2,10,1,10],[4,10,1,10],[1,1,1,1]];
-            
-            var map = Array.from({length: fmx}, () => Array(fmy).fill(0));
-
-            // --- 描画ロジック ---
-            function drawBase() {
-                ofc.fillStyle = "#FFFFFF"; ofc.fillRect(0,0,of.width,of.height);
-                // 数字と枠の描画
-                ofc.font = "17px Arial"; ofc.textAlign = "center"; ofc.fillStyle = "#000000";
-                for(var i=0;i<fmx;i++) for(var j=0;j<tn[i].length;j++)
-                    ofc.fillText(tn[i][j], fx+i*ds+ds/2, fy-(tn[i].length-j-1)*ds-4);
-                for(var i=0;i<fmy;i++) for(var j=0;j<ln[i].length;j++)
-                    ofc.fillText(ln[i][j], fx-(ln[i].length-j)*ds+ds/2, fy+(i+1)*ds-4);
-                
-                ofc.strokeStyle = cl;
-                for(var i=0; i<=fmx; i++) {
-                    ofc.lineWidth = (i%5==0) ? 2 : 1;
-                    ofc.beginPath(); ofc.moveTo(fx+i*ds, fy-tnm*ds); ofc.lineTo(fx+i*ds, fy+fmy*ds); ofc.stroke();
-                }
-                for(var j=0; j<=fmy; j++) {
-                    ofc.lineWidth = (j%5==0) ? 2 : 1;
-                    ofc.beginPath(); ofc.moveTo(fx-lnm*ds, fy+j*ds); ofc.lineTo(fx+fmx*ds, fy+j*ds); ofc.stroke();
-                }
-            }
-
-            function redraw() {
-                drawBase();
-                for(var x=0; x<fmx; x++) {
-                    for(var
+        let currentMode = 1;
+        let undoStack = [];
+        let redoStack = [];
+        
+        // 元のヒントデータ
+        const ln = [[0],[2,2,2,1],[1,1,1,2],[1,1,1,4],[2,2,2,1],[0],[3,2,2,2,2,2],[5,4,4,3,3,3],[1,2,1,2,1,2,4,3,3],[2,2,2,1,2,1,2,1,2],[2,2,2,2,2,1,2,1,2],[2,4,1,1,4,1,2,4,1,2,1,2],[2,2,2,2,2,1,2,1,2],[2,2,2,7,12],[5,4,4,2,2,2],[5,4,4,2,2,2],[0],[50],[0],[3,2,2,2,2,2],[5,4,4,3,3,3],[1,2,1,2,1,2,4,3,3],[2,2,2,1,1,2,1,2,1,2],[2,2,2,2,1,2,2,2,1,2,1,2],[2,2,1,1,5,1,2,2,1,2,1,2],[2,2,2,1,2,2,1,2,1,2],[2,2,2,1,7,12],[5,4,4,2,2,2],[5,4,4,2,2,2],[0]];
+        const tn = [[2,3,1,2,3],[2,4,1,2,4],[2,2,2,1,2,2,2],[6,2,1,6,2],[1,2,4,2,1,4,2],[2,1,1],[1,1],[1,2,1,1,2],[2,1,1,1,2],[1,1],[1],[2,3,1,2,3],[2,4,1,2,4],[7,2,1,7,2],[4,2,1,4,2],[1],[2,3,1,2,3],[2,4
