@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>イラストロジック - 完成演出追加版</title>
+    <title>イラストロジック - コントローラー完全修正版</title>
     <style>
         body { margin: 0; padding: 0; background: #f0f0f0; font-family: sans-serif; touch-action: none; }
         #ui-panel { 
@@ -61,7 +61,6 @@
         var ps=326, pdx=ps+24, pdy=fy+fmy*ds+204+ps, bs=272, pbx=pcs.width-bs-24, pby=pdy;
         var cpx=0, cpy=0, sp=0, pf=0, ct=0, pc_x=0, pc_y=0;
 
-        // --- 判定ロジック ---
         function getHintStatus(cells, hints) {
             var status = hints.map(() => ({ done: false }));
             var error = false;
@@ -101,7 +100,6 @@
             return { status, error };
         }
 
-        // --- 描画 ---
         function drawGrid() {
             ofc.fillStyle=c1; ofc.fillRect(0,0,of.width,of.height);
             ofc.fillStyle=cw; ofc.fillRect(fx,fy,fmx*ds,fmy*ds);
@@ -125,8 +123,6 @@
             ofc.strokeStyle=cl;
             for(var i=0;i<=fmx;i++){ ofc.lineWidth=(i%5==0)?2:1; ofc.strokeStyle=(i%5==0)?cm:cl; ofc.beginPath(); ofc.moveTo(fx+i*ds,fy); ofc.lineTo(fx+i*ds,fy+fmy*ds); ofc.stroke(); }
             for(var j=0;j<=fmy;j++){ ofc.lineWidth=(j%5==0)?2:1; ofc.strokeStyle=(j%5==0)?cm:cl; ofc.beginPath(); ofc.moveTo(fx,fy+j*ds); ofc.lineTo(fx+fmx*ds,fy+j*ds); ofc.stroke(); }
-            
-            // 解いている途中は「= 2026」のスペースは空けない
             if(sp<2) { ofc.fillStyle="#666"; ofc.font="32px sans-serif"; ofc.fillText("タップしてコントローラーを表示", pcs.width/2, fy+fmy*ds+150); } else tud();
         }
 
@@ -159,7 +155,6 @@
             checkAllClear();
         }
 
-        // 完成時の処理（メッセージと追加文字を描画）
         function checkAllClear() {
             for(var i=0; i<fmx; i++) {
                 var col=[]; for(var y=0;y<fmy;y++) col.push(map[i][y]);
@@ -171,99 +166,106 @@
                 var s=[]; var c=0; for(var v of row){if(v==1)c++; else if(c>0){s.push(c);c=0;}} if(c>0)s.push(c); if(s.length==0)s=[0];
                 if(s.join(',')!==ln[i].join(',')) return;
             }
-            
-            isFinished=true; 
-            document.getElementById('title_msg').innerText="正解です！おめでとう！";
-            
-            // 盤面をクリアして完成イラストのみを描画
-            ofc.fillStyle=c1; 
-            ofc.fillRect(0,0,of.width,of.height);
-            
-            // イラストを中央に配置（少し上にずらす）
-            var imgW = fmx*ds;
-            var imgH = fmy*ds;
-            var zx=(of.width - imgW)/2; 
-            var zy=(of.height - imgH)/2 - 150; // イラストの位置を150px上に
-            
-            // イラスト描画
-            for(var x=0;x<fmx;x++) {
-                for(var y=0;y<fmy;y++) {
-                    if(map[x][y]==1){ 
-                        ofc.fillStyle=cf; 
-                        ofc.fillRect(zx+x*ds,zy+y*ds,ds,ds); 
-                    }
-                }
-            }
-            
-            // イラストの下に「= 2026」を描画
-            // 画面上部メッセージと同じフォント設定
-            ofc.fillStyle=cm; 
-            ofc.font="bold 64px Arial"; 
-            ofc.textAlign="center";
-            ofc.fillText("= 2026", of.width/2, zy + imgH + 120); // イラストの下端から120px下に描画
-            
+            isFinished=true; document.getElementById('title_msg').innerText="正解です！おめでとう！";
+            ofc.fillStyle=c1; ofc.fillRect(0,0,of.width,of.height);
+            var imgW = fmx*ds, imgH = fmy*ds, zx=(of.width - imgW)/2, zy=(of.height - imgH)/2 - 150;
+            for(var x=0;x<fmx;x++) for(var y=0;y<fmy;y++) if(map[x][y]==1){ ofc.fillStyle=cf; ofc.fillRect(zx+x*ds,zy+y*ds,ds,ds); }
+            ofc.fillStyle=cm; ofc.font="bold 64px Arial"; ofc.textAlign="center";
+            ofc.fillText("= 2026", of.width/2, zy + imgH + 120);
             update();
         }
 
         function update() { pcx.drawImage(of,0,0); if(!isFinished){ pcx.fillStyle=cc; pcx.fillRect(fx+cpx*ds,fy,ds,fmy*ds); pcx.fillRect(fx,fy+cpy*ds,fmx*ds,ds); pcx.strokeStyle=ccC; pcx.lineWidth=2; pcx.strokeRect(fx+cpx*ds,fy+cpy*ds,ds,ds); } }
-        function moveCursor(dx, dy) { if(isFinished) return; cpx+=dx; cpy+=dy; cpx=Math.max(0,Math.min(fmx-1,cpx)); cpy=Math.max(0,Math.min(fmy-1,cpy)); if(pf&16) map[cpx][cpy] = currentInputMode; refresh(); }
-        setInterval(function(){ if(ct > 0) { ct++; if(ct > 8 && ct % 2 == 0 && (pc_x !== 0 || pc_y !== 0)) moveCursor(pc_x, pc_y); } }, 60);
+        
+        function moveCursor(dx, dy) { 
+            if(isFinished) return; 
+            cpx+=dx; cpy+=dy; cpx=Math.max(0,Math.min(fmx-1,cpx)); cpy=Math.max(0,Math.min(fmy-1,cpy)); 
+            if(pf&16) map[cpx][cpy] = currentInputMode;
+            refresh(); 
+        }
+
+        // --- コントローラーのリピート管理 ---
+        setInterval(function(){ 
+            if(ct > 0) { 
+                ct++; 
+                // 10カウント（約0.6秒）以上長押しされたら、2回に1回の頻度で移動
+                if(ct > 10 && ct % 2 == 0) {
+                    if(pc_x !== 0 || pc_y !== 0) moveCursor(pc_x, pc_y);
+                }
+            } 
+        }, 60);
+
         window.execUndo = function() { if(undoStack.length>0){ redoStack.push(JSON.stringify(map)); map=JSON.parse(undoStack.pop()); refresh(); } };
         window.execRedo = function() { if(redoStack.length>0){ undoStack.push(JSON.stringify(map)); map=JSON.parse(redoStack.pop()); refresh(); } };
         function save() { undoStack.push(JSON.stringify(map)); if(undoStack.length>50)undoStack.shift(); redoStack=[]; }
         function getPos(ex, ey) { var rect = pcs.getBoundingClientRect(); return { x: (ex-rect.left)*(pcs.width/rect.width), y: (ey-rect.top)*(pcs.height/rect.height) }; }
+
         pcs.addEventListener("touchstart", function(e) {
             if(isFinished) return;
-            var isCont=false, hB=false, hJ=false;
+            var touchOnPad = false;
             for(var i=0; i<e.touches.length; i++){
                 var p=getPos(e.touches[i].clientX, e.touches[i].clientY);
                 if(sp<2 && p.y>fy+fmy*ds){ sp=2; refresh(); return; }
                 if(sp>=2 && p.y>fy+fmy*ds){
-                    isCont=true; var lP=Math.sqrt(Math.pow(p.x-pdx,2)+Math.pow(p.y-pdy,2)); var lB=Math.sqrt(Math.pow(p.x-pbx,2)+Math.pow(p.y-pby,2));
-                    if(lP<ps*1.2){ var tan=Math.atan2(p.y-pdy, p.x-pdx); pc_x=0; pc_y=0; if(Math.abs(tan)<Math.PI/4) pc_x=1; else if(Math.abs(tan)>Math.PI*0.75) pc_x=-1; else if(tan>0) pc_y=1; else pc_y=-1; hJ=true; } else if(lB<bs*1.2) hB=true;
+                    touchOnPad = true;
+                    var distPad=Math.sqrt(Math.pow(p.x-pdx,2)+Math.pow(p.y-pdy,2)); 
+                    var distBtn=Math.sqrt(Math.pow(p.x-pbx,2)+Math.pow(p.y-pby,2));
+                    
+                    if(distBtn<bs*1.2) { // 決定ボタン
+                        if(!(pf&16)){ save(); pf|=16; map[cpx][cpy]=currentInputMode; refresh(); }
+                    }
+                    if(distPad<ps*1.2){ // 十字キー
+                        var tan=Math.atan2(p.y-pdy, p.x-pdx); 
+                        var nx=0, ny=0;
+                        if(Math.abs(tan)<Math.PI/4) nx=1; else if(Math.abs(tan)>Math.PI*0.75) nx=-1; else if(tan>0) ny=1; else ny=-1;
+                        if(ct === 0 || nx !== pc_x || ny !== pc_y) {
+                            save(); pc_x=nx; pc_y=ny; ct=1; moveCursor(pc_x, pc_y);
+                        }
+                    }
                 }
             }
-            if(isCont){ 
-                if(hB && !(pf&16)){ save(); pf|=16; map[cpx][cpy]=currentInputMode; refresh(); } 
-                if(!hB) pf&=~16; 
-                if(hJ && ct===0){ save(); ct=1; moveCursor(pc_x,pc_y); } 
-                if(!hJ){ ct=0; pc_x=0; pc_y=0; } 
-                e.preventDefault(); 
-            } else { 
-                var p=getPos(e.touches[0].clientX, e.touches[0].clientY); 
-                if(p.x>=fx && p.x<fx+fmx*ds && p.y>=fy && p.y<fy+fmy*ds){ save(); cpx=Math.floor((p.x-fx)/ds); cpy=Math.floor((p.y-fy)/ds); map[cpx][cpy]=currentInputMode; refresh(); } 
-            }
+            if(touchOnPad) e.preventDefault();
         }, {passive:false});
+
         pcs.addEventListener("touchmove", function(e) {
             if(isFinished) return;
-            var onP=false, hB=false, hJ=false;
+            var hasJoy=false, hasBtn=false;
             for(var i=0; i<e.touches.length; i++){
                 var p=getPos(e.touches[i].clientX, e.touches[i].clientY);
-                if(sp>=2 && p.y>fy+fmy*ds){ onP=true; var lP=Math.sqrt(Math.pow(p.x-pdx,2)+Math.pow(p.y-pdy,2)); var lB=Math.sqrt(Math.pow(p.x-pbx,2)+Math.pow(p.y-pby,2));
-                    if(lP<ps*1.2){ 
-                        var tan=Math.atan2(p.y-pdy, p.x-pdx); var nx=0, ny=0;
+                if(sp>=2 && p.y>fy+fmy*ds){
+                    var distPad=Math.sqrt(Math.pow(p.x-pdx,2)+Math.pow(p.y-pdy,2)); 
+                    var distBtn=Math.sqrt(Math.pow(p.x-pbx,2)+Math.pow(p.y-pby,2));
+                    if(distBtn<bs*1.2) hasBtn=true;
+                    if(distPad<ps*1.2){
+                        var tan=Math.atan2(p.y-pdy, p.x-pdx); 
+                        var nx=0, ny=0;
                         if(Math.abs(tan)<Math.PI/4) nx=1; else if(Math.abs(tan)>Math.PI*0.75) nx=-1; else if(tan>0) ny=1; else ny=-1;
-                        if(nx!==pc_x || ny!==pc_y){ pc_x=nx; pc_y=ny; ct=1; moveCursor(pc_x,pc_y); }
-                        hJ=true; 
-                    } else if(lB<bs*1.2) hB=true; else { hJ=false; pc_x=0; pc_y=0; ct=0; }
+                        if(nx !== pc_x || ny !== pc_y) { pc_x=nx; pc_y=ny; ct=1; moveCursor(pc_x, pc_y); }
+                        hasJoy=true;
+                    }
                 }
             }
-            if(onP){ 
-                if(hB && !(pf&16)){ save(); pf|=16; map[cpx][cpy]=currentInputMode; refresh(); } 
-                if(!hB) pf&=~16; 
-                if(!hJ){ ct=0; pc_x=0; pc_y=0; } 
-                e.preventDefault(); 
-            } else if(e.touches.length===1){ 
-                var p=getPos(e.touches[0].clientX, e.touches[0].clientY); 
-                var tx=Math.floor((p.x-fx)/ds), ty=Math.floor((p.y-fy)/ds); 
-                if(tx>=0 && tx<fmx && ty>=0 && ty<fmy && (cpx!=tx || cpy!=ty)){ cpx=tx; cpy=ty; map[tx][ty]=currentInputMode; refresh(); } 
-            }
+            if(!hasBtn) pf &= ~16;
+            if(!hasJoy) { ct=0; pc_x=0; pc_y=0; }
+            if(sp>=2) e.preventDefault();
         }, {passive:false});
-        pcs.addEventListener("touchend", function(e) { if(e.touches.length===0){ ct=0; pf&=~16; pc_x=0; pc_y=0; } });
+
+        pcs.addEventListener("touchend", function(e) { 
+            var hasJoy=false, hasBtn=false;
+            for(var i=0; i<e.touches.length; i++){
+                var p=getPos(e.touches[i].clientX, e.touches[i].clientY);
+                var distPad=Math.sqrt(Math.pow(p.x-pdx,2)+Math.pow(p.y-pdy,2)); 
+                var distBtn=Math.sqrt(Math.pow(p.x-pbx,2)+Math.pow(p.y-pby,2));
+                if(distBtn<bs*1.2) hasBtn=true;
+                if(distPad<ps*1.2) hasJoy=true;
+            }
+            if(!hasBtn) pf &= ~16;
+            if(!hasJoy) { ct=0; pc_x=0; pc_y=0; }
+        });
+
         pcs.addEventListener("mousedown", function(e) { if(isFinished) return; var p=getPos(e.clientX, e.clientY); if(p.y<fy+fmy*ds){ isMouseDown=true; save(); cpx=Math.floor((p.x-fx)/ds); cpy=Math.floor((p.y-fy)/ds); map[cpx][cpy]=currentInputMode; refresh(); } });
         window.addEventListener("mousemove", function(e) { if(!isMouseDown || isFinished) return; var p=getPos(e.clientX, e.clientY); var tx=Math.floor((p.x-fx)/ds), ty=Math.floor((p.y-fy)/ds); if(tx>=0 && tx<fmx && ty>=0 && ty<fmy && (cpx!=tx || cpy!=ty)){ cpx=tx; cpy=ty; map[tx][ty]=currentInputMode; refresh(); } });
         window.addEventListener("mouseup", function() { isMouseDown=false; });
-
         refresh();
     }
     window.onload = mf_start;
